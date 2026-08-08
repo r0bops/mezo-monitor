@@ -1,0 +1,25 @@
+# Mezo mainnet — CometBFT-family chain config.
+#
+# RPC endpoints are interpolated from the environment (${VAR}) so that
+# node URLs / secrets never live in this file. Values come from .env
+# (MEZO_RPC_URL, MEZO_RPC_WS_URL).
+#
+# This file + the generic CometBFT adapter is the ENTIRE Mezo-specific
+# surface. Adding another Cosmos/CometBFT chain = one new YAML file.
+
+slug: mezo-mainnet
+name: Mezo Mainnet
+chain_id: mezo_31612-1
+family: cometbft
+
+rpc_url: ${MEZO_RPC_URL}
+ws_url: ${MEZO_RPC_WS_URL}
+
+# Outbound deep-links only (tx-level explorer). Never indexed here.
+blockscout_url: https://explorer.mezo.org
+
+capabilities:
+  delegations: false
+  governance: false
+  slashing: false
+  poa: true
