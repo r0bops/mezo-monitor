@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mezo-monitor-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mezo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mezo}
+      POSTGRES_DB: ${POSTGRES_DB:-mezo_monitor}
+    ports:
+      # Pre-authorized per project rules (Postgres + API ports only).
+      - "5432:5432"
+    volumes:
+      - mezo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mezo} -d ${POSTGRES_DB:-mezo_monitor}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  mezo_pgdata:

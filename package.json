@@ -1,0 +1,19 @@
+{
+  "name": "mezo-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --stream run dev",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "db:up": "docker compose -f docker-compose.yml up -d postgres",
+    "db:down": "docker compose -f docker-compose.yml down",
+    "db:generate": "pnpm --filter @mezo/core db:generate",
+    "db:migrate": "pnpm --filter @mezo/core db:migrate"
+  }
+}
