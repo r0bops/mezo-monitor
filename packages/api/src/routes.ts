@@ -12,6 +12,7 @@ import {
   SHORT_WINDOW,
   blocksPerHour,
   getChain,
+  indexerStall,
   isBootstrapSet,
   listEndpoints,
   metricStats,
@@ -32,8 +33,6 @@ import { deliverPending } from "./delivery.js";
 
 /** Lag beyond which the indexer is considered stalled rather than merely behind. */
 const STALL_LAG_BLOCKS = 50;
-/** Blocks' worth of silence before the indexer counts as stalled on time alone. */
-const STALL_BLOCK_MULTIPLE = 20;
 /** Just under block cadence: a cached read is at most one block stale. */
 const DERIVED_TTL_MS = 3_000;
 
@@ -152,19 +151,11 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       const longComplete = longFilled >= LONG_WINDOW;
 
       /**
-       * Staleness fallback for when the chain head is unknown.
-       *
-       * Lag needs a reachable RPC, but an unreachable RPC is exactly when
-       * indexing has stopped — relying on lag alone reports "normal" while
-       * nothing is being ingested. Time since the last indexed block needs no
-       * RPC, so it catches that case.
+       * Staleness fallback for when the chain head is unknown — shared with the
+       * indexer_stale alert rule (see indexerStall) so the status field and the
+       * page can never disagree about whether the indexer is stalled.
        */
-      const blockTimeS = n.avg_block_time_ms !== null ? n.avg_block_time_ms / 1000 : 5;
-      const staleAfterMs = Math.max(60_000, blockTimeS * STALL_BLOCK_MULTIPLE * 1000);
-      const sinceLastBlockMs = n.last_block_time
-        ? Date.now() - new Date(n.last_block_time).getTime()
-        : null;
-      const stale = sinceLastBlockMs !== null && sinceLastBlockMs > staleAfterMs;
+      const stale = indexerStall(n).stale;
 
       const status =
         n.blocks_indexed === 0
@@ -500,11 +491,20 @@ export async function runEvaluation(deps: Deps): Promise<{ sent: number; failed:
       ? Math.max(0, headHeight - n.latest_indexed_height)
       : null;
 
+  // The RPC-free signals: these stay knowable precisely when `lag` goes null,
+  // which is what lets alerting survive the data source disappearing.
+  const stall = indexerStall(n);
+  const endpoints = await listEndpoints(deps.pool, chain.id);
+  const healthyEndpoints = endpoints.filter((e) => e.healthy).length;
+
   await evaluate(deps.pool, {
     chainId: chain.id,
     validators: rows,
     indexerLag: lag,
     avgBlockTimeS: n.avg_block_time_ms !== null ? n.avg_block_time_ms / 1000 : null,
+    indexerStaleS: stall.sinceLastBlockS,
+    staleAfterS: stall.staleAfterS,
+    healthyEndpoints,
     height: n.latest_indexed_height,
   });
 

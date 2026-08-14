@@ -51,6 +51,35 @@ export const DEFAULT_RULES: DefaultRule[] = [
     enabled: true,
   },
   {
+    /**
+     * Seconds since the newest indexed block. Unlike indexer_lag this needs no
+     * RPC — it is exactly the signal that stays knowable when every endpoint is
+     * unreachable, so the monitor's own blindness raises an event instead of
+     * silence. The effective threshold also honours the measured block time
+     * (see STALL_BLOCK_MULTIPLE); the stored threshold is a floor.
+     */
+    name: "Indexer stale",
+    metric: "indexer_stale",
+    comparator: "gt",
+    threshold: 300,
+    severity: "critical",
+    channel: "Webhook · PagerDuty",
+    enabled: true,
+  },
+  {
+    /**
+     * Count of endpoints with healthy = true. Distinguishes "a node died and
+     * we failed over cleanly" (no event) from "we have nowhere left to go".
+     */
+    name: "No healthy endpoint",
+    metric: "healthy_endpoints",
+    comparator: "lt",
+    threshold: 1,
+    severity: "critical",
+    channel: "Webhook · PagerDuty",
+    enabled: true,
+  },
+  {
     name: "Block time",
     metric: "block_time",
     comparator: "gt",
@@ -184,11 +213,26 @@ function short(addr: string): string {
   return addr.length <= 12 ? addr : `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
+/** 3725s -> "1h 2m"; keeps event bodies readable across multi-hour outages. */
+function humanDuration(seconds: number): string {
+  const s = Math.round(seconds);
+  if (s < 90) return `${s}s`;
+  const h = Math.floor(s / 3600);
+  const m = Math.round((s % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 export type EvalInput = {
   chainId: number;
   validators: ValidatorRow[];
   indexerLag: number | null;
   avgBlockTimeS: number | null;
+  /** Seconds since the newest indexed block; null when nothing is indexed. */
+  indexerStaleS: number | null;
+  /** Block-time-derived stall threshold (STALL_BLOCK_MULTIPLE), for the stale rule. */
+  staleAfterS: number;
+  /** Rows in chain_endpoints currently marked healthy. */
+  healthyEndpoints: number;
   height: number | null;
 };
 
@@ -224,6 +268,29 @@ function violationsFor(rule: RuleRow, input: EvalInput): Violation[] {
     case "indexer_lag":
       if (input.indexerLag !== null && compare(input.indexerLag, rule.comparator, rule.threshold)) {
         out.push({ subject: null, body: `indexer is ${input.indexerLag} blocks behind chain head` });
+      }
+      break;
+    case "indexer_stale": {
+      if (input.indexerStaleS === null) break; // nothing indexed yet — not an outage
+      // The stored threshold is a floor; the block-time-derived one (see
+      // STALL_BLOCK_MULTIPLE) applies too, so a slow chain doesn't page on its
+      // normal cadence.
+      const thresholdS = Math.max(rule.threshold, input.staleAfterS);
+      if (compare(input.indexerStaleS, rule.comparator, thresholdS)) {
+        out.push({
+          subject: null,
+          body: `no block indexed for ${humanDuration(input.indexerStaleS)} ` +
+            `(stale after ${humanDuration(thresholdS)})`,
+        });
+      }
+      break;
+    }
+    case "healthy_endpoints":
+      if (compare(input.healthyEndpoints, rule.comparator, rule.threshold)) {
+        out.push({
+          subject: null,
+          body: `${input.healthyEndpoints} healthy RPC endpoint(s) — nowhere left to fail over`,
+        });
       }
       break;
     case "block_time":

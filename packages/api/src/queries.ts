@@ -115,6 +115,46 @@ export async function setEndpointPinned(
   return r.rows[0] ?? null;
 }
 
+/** Blocks' worth of silence before the indexer counts as stalled on time alone. */
+export const STALL_BLOCK_MULTIPLE = 20;
+/** Floor on the stall threshold so a fast chain can't produce a sub-minute one. */
+export const STALL_MIN_SECONDS = 60;
+/** Assumed block time when none has been measured yet (matches typical cadence). */
+export const FALLBACK_BLOCK_TIME_S = 5;
+
+export type StallInfo = {
+  /** Seconds since the newest indexed block; null when nothing is indexed. */
+  sinceLastBlockS: number | null;
+  /** How much silence counts as stalled, derived from the measured block time. */
+  staleAfterS: number;
+  stale: boolean;
+};
+
+/**
+ * Is the indexer stalled, judged on time alone?
+ *
+ * Lag needs a reachable RPC, but an unreachable RPC is exactly when indexing
+ * has stopped — relying on lag alone reports "normal" while nothing is being
+ * ingested. Time since the last indexed block needs no RPC, so it catches that
+ * case. Shared by the /network status field and the indexer_stale alert rule
+ * so the two can never disagree.
+ */
+export function indexerStall(
+  n: Pick<NetworkRow, "last_block_time" | "avg_block_time_ms">,
+  nowMs: number = Date.now(),
+): StallInfo {
+  const blockTimeS =
+    n.avg_block_time_ms !== null ? n.avg_block_time_ms / 1000 : FALLBACK_BLOCK_TIME_S;
+  const staleAfterS = Math.max(STALL_MIN_SECONDS, blockTimeS * STALL_BLOCK_MULTIPLE);
+  const sinceLastBlockS =
+    n.last_block_time !== null ? (nowMs - new Date(n.last_block_time).getTime()) / 1000 : null;
+  return {
+    sinceLastBlockS,
+    staleAfterS,
+    stale: sinceLastBlockS !== null && sinceLastBlockS > staleAfterS,
+  };
+}
+
 export type NetworkRow = {
   latest_indexed_height: number | null;
   earliest_indexed_height: number | null;
