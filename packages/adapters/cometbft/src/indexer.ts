@@ -12,6 +12,7 @@ import {
 import { resolveEndpoints, type ChainConfig } from "./config";
 import { chooseActive, probe, type EndpointRow } from "./endpoints";
 import { parseBlock } from "./parsers";
+import { runRetentionSweep, DEFAULT_RETAIN_BLOCKS } from "./retention";
 import { CometbftRpc } from "./rpc";
 
 const POLL_MS = Number(process.env.POLL_INTERVAL_MS ?? 60000);
@@ -26,6 +27,10 @@ const GAP_REPAIR_LIMIT = 2_000;
 const ENDPOINT_PROBE_MS = Number(process.env.ENDPOINT_PROBE_INTERVAL_MS ?? 30_000);
 /** Live-ingest failures in a row before forcing an early reselect. */
 const INGEST_FAILURES_BEFORE_RESELECT = 3;
+/** How often to roll old block_signatures into daily aggregates. */
+const RETENTION_SWEEP_MS = Number(process.env.SIGNATURE_RETENTION_SWEEP_MS ?? 6 * 3600_000);
+/** Raw signatures kept beyond the long window; must exceed every live reader. */
+const RETAIN_BLOCKS = Number(process.env.SIGNATURE_RETAIN_BLOCKS ?? DEFAULT_RETAIN_BLOCKS);
 
 loadEnv();
 const { db } = createDb();
@@ -453,6 +458,27 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
 
   // self-heal: sweep for holes left by RPC failures or downtime
   setInterval(() => void runGapScanner(chainId, rpc), GAP_SCAN_MS);
+
+  /**
+   * Retention: roll block_signatures older than the live windows into daily
+   * aggregates and delete the raw rows. No RPC involved, so it runs (and
+   * catches up) even while every endpoint is down.
+   */
+  const sweepSignatures = async (): Promise<void> => {
+    try {
+      const r = await runRetentionSweep(db, chainId, RETAIN_BLOCKS);
+      if (r.cutoff > 0) {
+        console.log(
+          `retention: raw signatures kept above height ${r.cutoff} ` +
+            `(deleted ${r.deleted} rows into daily aggregates)`,
+        );
+      }
+    } catch (e) {
+      console.error("retention sweep failed:", (e as Error).message);
+    }
+  };
+  void sweepSignatures();
+  setInterval(() => void sweepSignatures(), RETENTION_SWEEP_MS);
 
   // backfill: backward from head to depth (archive node ⇒ no pruning boundary)
   void (async () => {
