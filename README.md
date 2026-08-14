@@ -78,6 +78,37 @@ Pages: Overview, Validators, Validator Set, Metrics, Alerts, API & Docs, Setting
 themes. Append `?debug` to the URL for the state switcher, which forces each loading/empty/stalled
 /backfill state for visual checking (it is otherwise dev-only).
 
+## RPC endpoints and failover
+Endpoints are declared per chain in `chains/*.yaml`:
+
+```yaml
+endpoints:
+  - label: primary
+    rpc_url: ${MEZO_RPC_URL}
+    ws_url: ${MEZO_RPC_WS_URL}
+    priority: 10
+  - label: backup
+    rpc_url: ${MEZO_RPC_URL_2}
+    priority: 20
+```
+
+Omit the list and the top-level `rpc_url`/`ws_url` is used as a single endpoint, so existing
+configs keep working. An endpoint whose `${VAR}` is unset is skipped with a warning rather than
+registered as a dead URL.
+
+The indexer probes every endpoint on an interval, records health, and switches to the healthiest by
+priority — immediately on repeated ingest failures, not only on the next probe. A node that answers
+but has fallen behind is treated as unhealthy: it looks fine while producing nothing. When nothing
+is healthy the indexer holds position rather than flapping, and recovers on its own.
+
+The dashboard header shows the active endpoint with health and latency, and lets you pin one.
+A pin overrides automatic selection and survives restarts, but is itself overridden while that node
+is unhealthy — staying on a dead node because it was pinned is worse than moving off it. The pin
+flag is kept, so control returns once it recovers.
+
+Switching the endpoint changes where **new** blocks are read from. Unlike polkadot.js, where the
+browser holds the connection, the indexer holds it here — history already in Postgres is unaffected.
+
 ## Alerting
 Rules live in `alert_rules` and are evaluated every 30s by the API against the same derived metrics
 it serves — no separate ingestion path. Events are edge-triggered: opened when a condition starts
