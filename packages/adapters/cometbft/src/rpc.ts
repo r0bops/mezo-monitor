@@ -6,10 +6,36 @@ import WebSocket from "ws";
  * (Response typing is owned by parsers.ts; this returns raw JSON.)
  */
 export class CometbftRpc {
+  /** Live subscription, retained so an endpoint switch can rebuild it. */
+  private subscription: { close: () => void } | null = null;
+  private onHeight: ((height: number) => void) | null = null;
+
   constructor(
-    private readonly rpcUrl: string,
-    private readonly wsUrl?: string,
+    private rpcUrl: string,
+    private wsUrl?: string,
   ) {}
+
+  get endpoint(): string {
+    return this.rpcUrl;
+  }
+
+  /**
+   * Point the client at a different node. The WebSocket is torn down and
+   * resubscribed; HTTP calls pick up the new URL immediately.
+   *
+   * Swapping in place rather than rebuilding the indexer keeps the ingest
+   * cursor, gap scanner and backfill running across a failover — restarting
+   * the cursor is precisely what used to lose blocks.
+   */
+  setEndpoint(rpcUrl: string, wsUrl?: string): void {
+    if (rpcUrl === this.rpcUrl && wsUrl === this.wsUrl) return;
+    this.rpcUrl = rpcUrl;
+    this.wsUrl = wsUrl;
+    if (this.onHeight) {
+      this.subscription?.close();
+      this.subscription = this.openSubscription(this.onHeight);
+    }
+  }
 
   async status(): Promise<any> {
     return this.http("/status");
@@ -56,6 +82,18 @@ export class CometbftRpc {
    * Auto-reconnects with capped exponential backoff. Returns a stop handle.
    */
   subscribeNewBlock(onHeight: (height: number) => void): { close: () => void } {
+    this.onHeight = onHeight;
+    this.subscription = this.openSubscription(onHeight);
+    return {
+      close: () => {
+        this.onHeight = null;
+        this.subscription?.close();
+        this.subscription = null;
+      },
+    };
+  }
+
+  private openSubscription(onHeight: (height: number) => void): { close: () => void } {
     let stopped = false;
     let ws: WebSocket | null = null;
     let attempt = 0;
