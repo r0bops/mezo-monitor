@@ -9,12 +9,35 @@ export type DbClient = {
   db: Database;
 };
 
-/** Create a pooled Drizzle client. Reads DATABASE_URL unless given. */
+/**
+ * Create a pooled Drizzle client. Reads DATABASE_URL unless given.
+ *
+ * Timeouts are set deliberately: without them a wedged (rather than refused)
+ * database leaves queries hanging forever, so the API never errors and the
+ * dashboard sits on a pending request instead of showing its "unreachable"
+ * state. Failing fast is what lets the UI degrade honestly.
+ */
 export function createDb(connectionString: string = process.env.DATABASE_URL ?? ""): DbClient {
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set (check your .env)");
   }
-  const pool = new pg.Pool({ connectionString });
+  const pool = new pg.Pool({
+    connectionString,
+    // Give up waiting for a free/!established connection.
+    connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS ?? 5_000),
+    // Server-side cap: kills the query in Postgres, not just client-side.
+    // Comfortably above the ~0.6s worst case, well under a 10s dashboard poll.
+    statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT_MS ?? 10_000),
+    // Client-side backstop, above statement_timeout so the server gets the
+    // chance to cancel first. Only fires when the server is unresponsive.
+    query_timeout: Number(process.env.DB_QUERY_TIMEOUT_MS ?? 12_000),
+    idleTimeoutMillis: 30_000,
+  });
+  // A pool-level error (server restart, network drop) must not take the process
+  // down; the next query re-establishes a connection.
+  pool.on("error", (err) => {
+    console.error("postgres pool error:", err.message);
+  });
   const db = drizzle(pool, { schema });
   return { pool, db };
 }

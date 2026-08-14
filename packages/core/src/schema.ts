@@ -1,5 +1,6 @@
 import {
   boolean,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -109,6 +110,78 @@ export const blockSignatures = pgTable(
       t.height,
     ),
     byChainHeight: index("block_sigs_chain_height_idx").on(t.chainId, t.height),
+  }),
+);
+
+/**
+ * Alert rule definitions. Thresholds are evaluated against the same derived
+ * metrics the API serves (missed streak, uptime, indexer lag, block time), so
+ * a rule never needs its own ingestion path. `metric` selects the evaluator;
+ * `threshold` is compared with `comparator`.
+ */
+export const alertRules = pgTable(
+  "alert_rules",
+  {
+    id: serial("id").primaryKey(),
+    chainId: integer("chain_id")
+      .notNull()
+      .references(() => chains.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    metric: text("metric").notNull(), // "missed_streak" | "uptime_1000" | "indexer_lag" | "block_time"
+    comparator: text("comparator").notNull(), // "gt" | "lt" | "gte" | "lte"
+    threshold: doublePrecision("threshold").notNull(),
+    severity: text("severity").notNull(), // "critical" | "warning" | "info"
+    channel: text("channel"), // human label, e.g. "Webhook · PagerDuty"
+    /**
+     * Generic incoming-webhook URL. A plain JSON POST is accepted by Slack,
+     * Discord and PagerDuty alike, so no provider-specific code is needed.
+     * Null means the rule is dashboard-only.
+     */
+    webhookUrl: text("webhook_url"),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byChain: index("alert_rules_chain_idx").on(t.chainId),
+    chainNameUniq: uniqueIndex("alert_rules_chain_name_idx").on(t.chainId, t.name),
+  }),
+);
+
+/**
+ * Alert firings. `resolvedAt` set when the condition clears, which is what
+ * renders a "Resolved" event. `subject` is the validator address when the rule
+ * is per-validator, null for network-wide rules.
+ */
+export const alertEvents = pgTable(
+  "alert_events",
+  {
+    id: serial("id").primaryKey(),
+    chainId: integer("chain_id")
+      .notNull()
+      .references(() => chains.id, { onDelete: "cascade" }),
+    ruleId: integer("rule_id").references(() => alertRules.id, { onDelete: "set null" }),
+    severity: text("severity").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    subject: text("subject"), // validator address, when applicable
+    height: integer("height"),
+    firedAt: timestamp("fired_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    /**
+     * Delivery is tracked separately for the two transitions: an event notifies
+     * once when it fires and again when it clears. Attempts and the last error
+     * are kept so a silently failing webhook is visible rather than guessed at.
+     */
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    resolvedDeliveredAt: timestamp("resolved_delivered_at", { withTimezone: true }),
+    deliveryAttempts: integer("delivery_attempts").notNull().default(0),
+    deliveryAttemptAt: timestamp("delivery_attempt_at", { withTimezone: true }),
+    deliveryError: text("delivery_error"),
+  },
+  (t) => ({
+    byChainFired: index("alert_events_chain_fired_idx").on(t.chainId, t.firedAt),
+    openByRule: index("alert_events_rule_open_idx").on(t.ruleId, t.subject, t.resolvedAt),
   }),
 );
 
