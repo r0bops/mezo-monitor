@@ -59,6 +59,10 @@ export type Validator = {
   rank: number;
   address: string;
   moniker: string | null;
+  /** Operator-assigned local identity; the chain itself exposes no monikers. */
+  label: string | null;
+  /** Marks validators this operator cares about. */
+  watched: boolean;
   pub_key: string | null;
   voting_power: number | null;
   is_active: boolean;
@@ -110,14 +114,19 @@ export type SeriesPoint = {
 };
 
 export type Metrics = {
+  /** Horizon the stats/series/volume cover: 24, 168 or 720 hours. */
+  hours: number;
   stats: {
     avg_block_time_s: number | null;
     p95_block_time_s: number | null;
-    blocks_24h: number;
-    signing_rate_24h: number | null;
+    blocks: number;
+    signing_rate: number | null;
   };
   series: SeriesPoint[];
-  blocks_per_hour: { t: string; n: number }[];
+  volume: {
+    unit: "hour" | "day";
+    points: { t: string; n: number }[];
+  };
   proposer_distribution: {
     rank: number;
     address: string;
@@ -223,7 +232,7 @@ async function get<T>(path: string): Promise<T> {
 export const getNetwork = () => get<Network>("/api/v1/network");
 export const getValidators = () => get<ValidatorList>("/api/v1/validators");
 export const getValidatorSet = () => get<ValidatorSet>("/api/v1/validator-set");
-export const getMetrics = () => get<Metrics>("/api/v1/metrics");
+export const getMetrics = (hours: number = 24) => get<Metrics>(`/api/v1/metrics?hours=${hours}`);
 export const getConfig = () => get<Config>("/api/v1/config");
 export const getAlerts = () => get<Alerts>("/api/v1/alerts");
 export const getEndpoints = () => get<EndpointList>("/api/v1/endpoints");
@@ -241,6 +250,20 @@ export async function setEndpointPinned(id: number, pinned: boolean): Promise<En
 
 export const getValidatorDetail = (address: string, window: number) =>
   get<ValidatorDetail>(`/api/v1/validators/${encodeURIComponent(address)}?window=${window}`);
+
+/** Set (or clear) a validator's local label and/or watched flag. */
+export async function updateValidatorIdentity(
+  address: string,
+  patch: { label?: string | null; watched?: boolean },
+): Promise<{ address: string; moniker: string | null; label: string | null; watched: boolean }> {
+  const r = await fetch(`/api/v1/validators/${encodeURIComponent(address)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new ApiError(`validator update failed (${r.status})`, r.status);
+  return r.json();
+}
 
 export const getSeries = (minutes: number, buckets: number) =>
   get<Series>(`/api/v1/series?minutes=${minutes}&buckets=${buckets}`);

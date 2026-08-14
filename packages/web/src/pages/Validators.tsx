@@ -20,9 +20,9 @@ import {
 } from "../components/ui";
 import { clampPct, downloadCsv, fmt, pct, short, toCsv } from "../lib";
 
-const COLS = "36px 300px 150px 150px 96px 160px 150px 96px";
+const COLS = "36px 28px 300px 150px 150px 96px 160px 150px 96px";
 
-type Filter = "all" | "active" | "degraded";
+type Filter = "all" | "active" | "degraded" | "watched";
 
 export function Validators({
   d,
@@ -39,15 +39,19 @@ export function Validators({
   const counts = useMemo(() => {
     const active = d.validators.filter((v) => v.status === "active").length;
     const degraded = d.validators.filter((v) => v.status !== "active").length;
-    return { all: d.validators.length, active, degraded };
+    const watched = d.validators.filter((v) => v.watched).length;
+    return { all: d.validators.length, active, degraded, watched };
   }, [d.validators]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return d.validators.filter((v) => {
-      if (q && !v.address.toLowerCase().includes(q)) return false;
+      // Search matches the consensus address and any local label.
+      if (q && !v.address.toLowerCase().includes(q) && !(v.label ?? "").toLowerCase().includes(q))
+        return false;
       if (filter === "all") return true;
       if (filter === "degraded") return v.status !== "active";
+      if (filter === "watched") return v.watched;
       return v.status === "active";
     });
   }, [d.validators, filter, query]);
@@ -58,6 +62,8 @@ export function Validators({
     const header = [
       "rank",
       "address",
+      "label",
+      "watched",
       "status",
       "uptime_1000",
       "uptime_10000",
@@ -71,6 +77,8 @@ export function Validators({
     const body = rows.map((v) => [
       v.rank,
       v.address,
+      v.label ?? "",
+      v.watched ? "yes" : "no",
       v.status,
       v.uptime_1000?.toFixed(4) ?? "",
       v.uptime_10000?.toFixed(4) ?? "",
@@ -86,6 +94,7 @@ export function Validators({
 
   const filters: { id: Filter; label: string }[] = [
     { id: "all", label: `All ${counts.all}` },
+    { id: "watched", label: `Watched ${counts.watched}` },
     { id: "active", label: `Active ${counts.active}` },
     { id: "degraded", label: `Degraded ${counts.degraded}` },
   ];
@@ -195,6 +204,7 @@ export function Validators({
           }}
         >
           <Label size={9}>#</Label>
+          <Label size={9}>★</Label>
           <Label size={9}>Consensus address</Label>
           <Label size={9}>Uptime (1,000)</Label>
           <Label size={9}>Uptime ({fmt(longTarget)})</Label>
@@ -221,6 +231,8 @@ export function Validators({
             selected={v.address === selected}
             onSelect={onSelect}
             longTarget={longTarget}
+            onWatch={(watched) => d.patchValidator(v.address, { watched })}
+            onLabel={(label) => d.patchValidator(v.address, { label })}
           />
         ))}
 
@@ -237,7 +249,7 @@ export function Validators({
             Showing 1 to {rows.length} of {d.validators.length}
           </span>
           <span style={{ font: `400 10.5px/1 ${mono}`, color: TX3 }}>
-            this chain exposes no monikers · identity is the consensus address
+            this chain exposes no monikers · labels are local and editable (click one to rename)
           </span>
         </div>
       </section>
@@ -256,11 +268,15 @@ function FullRow({
   selected,
   onSelect,
   longTarget,
+  onWatch,
+  onLabel,
 }: {
   v: Validator;
   selected: boolean;
   onSelect: (a: string) => void;
   longTarget: number;
+  onWatch: (watched: boolean) => void;
+  onLabel: (label: string | null) => void;
 }) {
   const partial = v.slots_10000 < longTarget;
   return (
@@ -279,11 +295,35 @@ function FullRow({
       }}
     >
       <span style={{ font: `500 11.5px/1 ${mono}`, color: TX3 }}>{v.rank}</span>
+      <button
+        type="button"
+        title={v.watched ? "Unwatch" : "Watch"}
+        onClick={(e) => {
+          e.stopPropagation();
+          onWatch(!v.watched);
+        }}
+        style={{
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          padding: 0,
+          width: 20,
+          height: 20,
+          font: `400 14px/1 ${sans}`,
+          color: v.watched ? "var(--warn)" : TX3,
+          textShadow: v.watched ? "0 0 6px color-mix(in srgb, var(--warn) 40%, transparent)" : "none",
+        }}
+      >
+        {v.watched ? "★" : "☆"}
+      </button>
       <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
         <Identicon address={v.address} size={20} />
-        <span style={{ font: `500 12.5px/1 ${mono}`, color: selected ? TX : TX2, whiteSpace: "nowrap" }}>
-          {short(v.address)}
-        </span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+          <span style={{ font: `500 12.5px/1 ${mono}`, color: selected ? TX : TX2, whiteSpace: "nowrap" }}>
+            {short(v.address)}
+          </span>
+          <LabelEditor label={v.label} onLabel={onLabel} />
+        </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 9, paddingRight: 20 }}>
         <span style={{ font: `500 12px/1 ${mono}`, color: statusColor(v.uptime_1000, v.status), width: 52 }}>
@@ -348,5 +388,81 @@ function FullRow({
         <StatusPill status={v.status} size="md" />
       </span>
     </div>
+  );
+}
+
+/**
+ * Click-to-edit local label. An absent label renders as a faint "label" hint
+ * rather than nothing, so the feature is discoverable; empty input clears it.
+ */
+function LabelEditor({
+  label,
+  onLabel,
+}: {
+  label: string | null;
+  onLabel: (label: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  if (editing) {
+    const commit = () => {
+      const next = draft.trim();
+      onLabel(next === "" ? null : next);
+      setEditing(false);
+    };
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        placeholder="local label"
+        maxLength={64}
+        style={{
+          border: "1px solid var(--brand)",
+          borderRadius: 5,
+          outline: "none",
+          background: "var(--panel)",
+          font: `400 10.5px/1 ${sans}`,
+          color: TX,
+          padding: "3px 6px",
+          width: 160,
+        }}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      title="Edit local label"
+      onClick={(e) => {
+        e.stopPropagation();
+        setDraft(label ?? "");
+        setEditing(true);
+      }}
+      style={{
+        border: "none",
+        background: "transparent",
+        cursor: "text",
+        padding: 0,
+        textAlign: "left",
+        font: `400 10.5px/1 ${sans}`,
+        color: label ? TX2 : TX3,
+        maxWidth: 200,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        height: 12,
+      }}
+    >
+      {label ?? "label…"}
+    </button>
   );
 }

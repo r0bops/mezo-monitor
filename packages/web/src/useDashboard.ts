@@ -16,6 +16,7 @@ import {
   getEndpoints,
   getValidatorSet,
   getValidators,
+  updateValidatorIdentity,
   type Alerts,
   type Config,
   type EndpointList,
@@ -64,6 +65,8 @@ export type Dashboard = {
   refresh: () => void;
   setAlerts: (a: Alerts) => void;
   setEndpoints: (e: EndpointList) => void;
+  /** Optimistically apply a local identity edit (label / watched). */
+  patchValidator: (address: string, patch: { label?: string | null; watched?: boolean }) => void;
 };
 
 export function useDashboard(opts: {
@@ -71,8 +74,10 @@ export function useDashboard(opts: {
   override: DevState | null;
   selected: string | null;
   window: number;
+  /** Metrics horizon in hours (24 | 168 | 720). */
+  metricsHours: number;
 }): Dashboard {
-  const { live, override, selected, window: win } = opts;
+  const { live, override, selected, window: win, metricsHours } = opts;
 
   const [net, setNet] = useState<Network | null>(null);
   const [validators, setValidators] = useState<Validator[]>([]);
@@ -91,6 +96,24 @@ export function useDashboard(opts: {
   const booted = useRef(false);
 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
+
+  /**
+   * Apply a local identity edit: PATCH the API, then fold the result into the
+   * cached lists so the star/label appears without waiting for the slow loop.
+   */
+  const patchValidator = useCallback(
+    (address: string, patch: { label?: string | null; watched?: boolean }) => {
+      setValidators((vs) =>
+        vs.map((v) => (v.address === address ? { ...v, ...patch } : v)),
+      );
+      updateValidatorIdentity(address, patch).catch(() => {
+        // Revert on failure; the next poll would fix it, but an immediate
+        // revert tells the operator the edit didn't take.
+        refresh();
+      });
+    },
+    [refresh],
+  );
 
   // Fast loop: the numbers that change every block.
   useEffect(() => {
@@ -119,13 +142,14 @@ export function useDashboard(opts: {
     };
   }, [live, tick]);
 
-  // Slow loop: aggregates that don't need block cadence.
+  // Slow loop: aggregates that don't need block cadence. The metrics horizon
+  // is a dependency so switching ranges refetches immediately.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
       const results = await Promise.allSettled([
         getValidatorSet(),
-        getMetrics(),
+        getMetrics(metricsHours),
         getAlerts(),
         getEndpoints(),
       ]);
@@ -142,7 +166,7 @@ export function useDashboard(opts: {
       cancelled = true;
       clearInterval(id);
     };
-  }, [live, tick]);
+  }, [live, tick, metricsHours]);
 
   // Config is static for the process lifetime.
   useEffect(() => {
@@ -200,5 +224,6 @@ export function useDashboard(opts: {
     refresh,
     setAlerts,
     setEndpoints,
+    patchValidator,
   };
 }

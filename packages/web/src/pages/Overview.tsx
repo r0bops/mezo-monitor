@@ -504,7 +504,7 @@ function ValidatorTable({
             <span style={{ font: `400 10.5px/1 ${mono}`, color: TX3 }}>
               {backfill
                 ? `long window ${longPct(d)}% backfilled`
-                : "consensus addresses · no monikers on this chain"}
+                : "consensus addresses · no monikers on this chain · labels are local"}
             </span>
           </div>
         </div>

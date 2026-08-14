@@ -1,37 +1,57 @@
-/** Metrics: 24-hour consensus charts. */
+/** Metrics: consensus charts over a selectable horizon (24h / 7d / 30d). */
 import { useMemo } from "react";
 import type { Dashboard } from "../useDashboard";
-import { BRAND, Label, LineChart, OK, TX, TX3, WARN, mono, panel, sans } from "../components/ui";
+import { BRAND, Label, LineChart, OK, TX, TX2, TX3, WARN, mono, panel, sans } from "../components/ui";
 import { area, fill, fmt, pct, pts, secs, short } from "../lib";
 
-export function Metrics({ d }: { d: Dashboard }) {
+const RANGES: { hours: number; label: string; axis: [string, string | undefined, string] }[] = [
+  { hours: 24, label: "24h", axis: ["−24h", "−12h", "now"] },
+  { hours: 168, label: "7d", axis: ["−7d", undefined, "now"] },
+  { hours: 720, label: "30d", axis: ["−30d", undefined, "now"] },
+];
+
+export function Metrics({
+  d,
+  hours,
+  onHours,
+}: {
+  d: Dashboard;
+  hours: number;
+  onHours: (h: number) => void;
+}) {
   const m = d.metrics;
+  const range = RANGES.find((r) => r.hours === hours) ?? RANGES[0];
+  // The server may still be answering the previous horizon; label what we got.
+  const shown = RANGES.find((r) => r.hours === (m?.hours ?? hours)) ?? RANGES[0];
 
   const bt = useMemo(() => fill((m?.series ?? []).map((p) => p.block_time_s)), [m]);
   const sr = useMemo(() => fill((m?.series ?? []).map((p) => p.signing_rate)), [m]);
 
   const stats = [
-    { label: "Avg block time · 24h", value: secs(m?.stats.avg_block_time_s ?? null), c: OK },
-    { label: "p95 block time · 24h", value: secs(m?.stats.p95_block_time_s ?? null), c: TX },
-    { label: "Blocks indexed · 24h", value: fmt(m?.stats.blocks_24h ?? null), c: TX },
+    { label: `Avg block time · ${shown.label}`, value: secs(m?.stats.avg_block_time_s ?? null), c: OK },
+    { label: `p95 block time · ${shown.label}`, value: secs(m?.stats.p95_block_time_s ?? null), c: TX },
+    { label: `Blocks indexed · ${shown.label}`, value: fmt(m?.stats.blocks ?? null), c: TX },
     {
-      label: "Signing rate · 24h",
-      value: pct(m?.stats.signing_rate_24h ?? null, 2),
+      label: `Signing rate · ${shown.label}`,
+      value: pct(m?.stats.signing_rate ?? null, 2),
       // An unmeasured rate is unknown, not healthy — don't tint it green.
       c:
-        m?.stats.signing_rate_24h === null || m?.stats.signing_rate_24h === undefined
+        m?.stats.signing_rate === null || m?.stats.signing_rate === undefined
           ? TX3
-          : m.stats.signing_rate_24h < 99.5
+          : m.stats.signing_rate < 99.5
             ? WARN
             : OK,
     },
   ];
 
-  const hours = m?.blocks_per_hour ?? [];
-  const maxHour = Math.max(1, ...hours.map((h) => h.n));
+  const volume = m?.volume.points ?? [];
+  const maxVol = Math.max(1, ...volume.map((h) => h.n));
+  const unitLabel = m?.volume.unit === "day" ? "day" : "hour";
   // Derived from the measured block time; null when there isn't one yet.
-  const expectedPerHour = m?.stats.avg_block_time_s
-    ? Math.round(3600 / m.stats.avg_block_time_s)
+  const expectedPerBucket = m?.stats.avg_block_time_s
+    ? Math.round(
+        (3600 / m.stats.avg_block_time_s) * (m?.volume.unit === "day" ? 24 : 1),
+      )
     : null;
 
   const dist = m?.proposer_distribution ?? [];
@@ -39,6 +59,41 @@ export function Metrics({ d }: { d: Dashboard }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+        <span style={{ font: `400 11px/1 ${sans}`, color: TX3 }}>
+          a 24h window empties after any long outage — wider horizons keep history visible
+        </span>
+        <div
+          style={{
+            display: "flex",
+            gap: 2,
+            padding: 2,
+            borderRadius: 9,
+            border: "1px solid var(--line)",
+            background: "var(--panel)",
+          }}
+        >
+          {RANGES.map((r) => (
+            <button
+              key={r.hours}
+              type="button"
+              onClick={() => onHours(r.hours)}
+              style={{
+                padding: "6px 11px",
+                borderRadius: 7,
+                border: "none",
+                cursor: "pointer",
+                font: `600 11.5px/1 ${sans}`,
+                background: hours === r.hours ? "var(--brandSoft)" : "transparent",
+                color: hours === r.hours ? "var(--brand)" : TX2,
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
         {stats.map((s) => (
           <div key={s.label} style={{ ...panel, padding: "15px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -51,38 +106,44 @@ export function Metrics({ d }: { d: Dashboard }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <ChartCard
           title="Block time"
-          note="last 24 hours · y-axis 2–6s"
+          note={`last ${shown.label} · y-axis 2–6s`}
           labels={["6s", "4s", "2s"]}
           series={bt}
           min={2}
           max={6}
           stroke={OK}
           fillColor="var(--okSoft)"
+          axis={shown.axis}
         />
         <ChartCard
           title="Signing rate"
-          note="last 24 hours · y-axis 90–100%"
+          note={`last ${shown.label} · y-axis 90–100%`}
           labels={["100%", "", "90%"]}
           series={sr}
           min={90}
           max={100}
           stroke={BRAND}
           fillColor="var(--brandSoft)"
+          axis={shown.axis}
         />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <section style={{ ...panel, padding: "16px 18px 14px", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-            <h3 style={{ margin: 0, font: `600 13px/1 ${sans}`, color: TX }}>Blocks indexed per hour</h3>
+            <h3 style={{ margin: 0, font: `600 13px/1 ${sans}`, color: TX }}>
+              Blocks indexed per {unitLabel}
+            </h3>
             <span style={{ font: `400 10.5px/1 ${sans}`, color: TX3 }}>
-              {expectedPerHour === null ? "expected — · needs block time" : `expected ~${fmt(expectedPerHour)}/h`}
+              {expectedPerBucket === null
+                ? `expected — · needs block time`
+                : `expected ~${fmt(expectedPerBucket)}/${unitLabel}`}
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 110 }}>
-            {hours.length === 0 && <EmptyBars />}
-            {hours.map((h) => {
-              const pctH = (h.n / maxHour) * 100;
+            {volume.length === 0 && <EmptyBars />}
+            {volume.map((h) => {
+              const pctH = (h.n / maxVol) * 100;
               return (
                 <span
                   key={h.t}
@@ -92,9 +153,9 @@ export function Metrics({ d }: { d: Dashboard }) {
                     borderRadius: "3px 3px 0 0",
                     height: `${Math.max(2, pctH).toFixed(0)}%`,
                     background:
-                      expectedPerHour === null
+                      expectedPerBucket === null
                         ? "color-mix(in srgb, var(--ok) 55%, transparent)"
-                        : h.n >= expectedPerHour * 0.9
+                        : h.n >= expectedPerBucket * 0.9
                           ? OK
                           : "color-mix(in srgb, var(--ok) 55%, transparent)",
                     display: "block",
@@ -103,7 +164,7 @@ export function Metrics({ d }: { d: Dashboard }) {
               );
             })}
           </div>
-          <Axis left="−24h" mid="−12h" right="now" />
+          <Axis left={shown.axis[0]} mid={shown.axis[1]} right={shown.axis[2]} />
         </section>
 
         <section style={{ ...panel, padding: "16px 18px 14px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -132,6 +193,12 @@ export function Metrics({ d }: { d: Dashboard }) {
           <Axis left="rank 1" right={`rank ${dist.length || "—"}`} />
         </section>
       </div>
+
+      {range.hours !== shown.hours && (
+        <span style={{ font: `400 11px/1 ${sans}`, color: TX3 }}>
+          showing {shown.label} — {range.label} is loading
+        </span>
+      )}
     </div>
   );
 }
@@ -163,6 +230,7 @@ function ChartCard({
   max,
   stroke,
   fillColor,
+  axis,
 }: {
   title: string;
   note: string;
@@ -172,6 +240,7 @@ function ChartCard({
   max: number;
   stroke: string;
   fillColor: string;
+  axis: [string, string | undefined, string];
 }) {
   return (
     <section style={{ ...panel, padding: "16px 18px 14px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -200,7 +269,7 @@ function ChartCard({
           {labels[2]}
         </span>
       </div>
-      <Axis left="−24h" mid="−12h" right="now" />
+      <Axis left={axis[0]} mid={axis[1]} right={axis[2]} />
     </section>
   );
 }

@@ -98,6 +98,21 @@ export function ValidatorSet({ d }: { d: Dashboard }) {
                 <span style={{ font: `500 12px/1 ${mono}`, color: TX2, whiteSpace: "nowrap" }}>
                   {short(m.address)}
                 </span>
+                {m.label && (
+                  <span
+                    style={{
+                      font: `400 10px/1 ${sans}`,
+                      color: TX2,
+                      padding: "3px 7px",
+                      borderRadius: 5,
+                      background: "var(--panel2)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {m.watched ? "★ " : ""}
+                    {m.label}
+                  </span>
+                )}
               </div>
               <span style={{ font: `500 11.5px/1 ${mono}`, color: TX2, textAlign: "right", paddingRight: 16 }}>
                 {fmt(m.voting_power)}

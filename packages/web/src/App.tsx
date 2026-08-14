@@ -75,6 +75,7 @@ export default function App() {
   const [override, setOverride] = useState<DevState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [win, setWin] = useState(500);
+  const [metricsHours, setMetricsHours] = useState(24);
   const [copied, setCopied] = useState<string | null>(null);
 
   const showDevTools = useMemo(devToolsEnabled, []);
@@ -94,7 +95,7 @@ export default function App() {
     setPage(id);
   }, []);
 
-  const d = useDashboard({ live, override, selected, window: win });
+  const d = useDashboard({ live, override, selected, window: win, metricsHours });
 
   // Default the detail panel to the first validator once data arrives.
   useEffect(() => {
@@ -288,7 +289,7 @@ export default function App() {
           )}
           {page === "validators" && <Validators d={d} selected={selected} onSelect={setSelected} />}
           {page === "vset" && <ValidatorSet d={d} />}
-          {page === "metrics" && <Metrics d={d} />}
+          {page === "metrics" && <Metrics d={d} hours={metricsHours} onHours={setMetricsHours} />}
           {page === "alerts" && <Alerts d={d} />}
           {page === "api" && <ApiDocs d={d} />}
           {page === "settings" && <Settings d={d} theme={theme} onTheme={setTheme} />}
