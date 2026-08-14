@@ -8,8 +8,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mezo}
       POSTGRES_DB: ${POSTGRES_DB:-mezo_monitor}
     ports:
-      # Pre-authorized per project rules (Postgres + API ports only).
-      - "5432:5432"
+      # Bound to loopback: the host has a public IP and no firewall, so an
+      # unqualified "5432:5432" publishes Postgres to the internet.
+      - "127.0.0.1:5432:5432"
     volumes:
       - mezo_pgdata:/var/lib/postgresql/data
     healthcheck:
