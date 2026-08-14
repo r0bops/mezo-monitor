@@ -13,10 +13,12 @@ import {
   getNetwork,
   getSeries,
   getValidatorDetail,
+  getEndpoints,
   getValidatorSet,
   getValidators,
   type Alerts,
   type Config,
+  type EndpointList,
   type Metrics,
   type Network,
   type Series,
@@ -50,6 +52,7 @@ export type Dashboard = {
   series: Series | null;
   alerts: Alerts | null;
   config: Config | null;
+  endpoints: EndpointList | null;
   detail: ValidatorDetail | null;
   /** Effective state after any dev override. */
   state: SystemState;
@@ -60,6 +63,7 @@ export type Dashboard = {
   agoSeconds: number;
   refresh: () => void;
   setAlerts: (a: Alerts) => void;
+  setEndpoints: (e: EndpointList) => void;
 };
 
 export function useDashboard(opts: {
@@ -76,6 +80,7 @@ export function useDashboard(opts: {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [series, setSeries] = useState<Series | null>(null);
   const [alerts, setAlerts] = useState<Alerts | null>(null);
+  const [endpoints, setEndpoints] = useState<EndpointList | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
   const [detail, setDetail] = useState<ValidatorDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -122,11 +127,13 @@ export function useDashboard(opts: {
         getValidatorSet(),
         getMetrics(),
         getAlerts(),
+        getEndpoints(),
       ]);
       if (cancelled) return;
       if (results[0].status === "fulfilled") setSet(results[0].value);
       if (results[1].status === "fulfilled") setMetrics(results[1].value);
       if (results[2].status === "fulfilled") setAlerts(results[2].value);
+      if (results[3].status === "fulfilled") setEndpoints(results[3].value);
     };
     void run();
     if (!live) return () => { cancelled = true; };
@@ -183,6 +190,7 @@ export function useDashboard(opts: {
     series,
     alerts,
     config,
+    endpoints,
     detail,
     state: override && override !== "bootstrap" ? override : derived,
     bootstrap: override === "bootstrap" ? true : (net?.vset_bootstrap ?? false),
@@ -191,5 +199,6 @@ export function useDashboard(opts: {
     agoSeconds,
     refresh,
     setAlerts,
+    setEndpoints,
   };
 }

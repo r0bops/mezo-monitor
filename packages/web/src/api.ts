@@ -39,6 +39,14 @@ export type Network = {
   head_error: string | null;
   long_window: { target: number; filled: number; complete: boolean };
   vset_bootstrap: boolean;
+  active_endpoint: {
+    id: number;
+    label: string;
+    healthy: boolean;
+    latency_ms: number | null;
+    last_height: number | null;
+    pinned: boolean;
+  } | null;
   /** Newest 100 blocks, oldest first — backs the per-block signing strip. */
   recent_signing: { height: number; signed: number | null; total: number | null }[];
   last_set_change: { height: number; time: string; type: string } | null;
@@ -150,6 +158,24 @@ export type AlertEvent = {
 
 export type Alerts = { rules: AlertRule[]; events: AlertEvent[] };
 
+export type Endpoint = {
+  id: number;
+  label: string;
+  rpc_url: string | null;
+  ws_url: string | null;
+  priority: number;
+  is_active: boolean;
+  pinned: boolean;
+  healthy: boolean;
+  last_height: number | null;
+  latency_ms: number | null;
+  last_ok_at: string | null;
+  last_error: string | null;
+  consecutive_failures: number;
+};
+
+export type EndpointList = { count: number; endpoints: Endpoint[] };
+
 export type Config = {
   chain: {
     slug: string;
@@ -200,6 +226,18 @@ export const getValidatorSet = () => get<ValidatorSet>("/api/v1/validator-set");
 export const getMetrics = () => get<Metrics>("/api/v1/metrics");
 export const getConfig = () => get<Config>("/api/v1/config");
 export const getAlerts = () => get<Alerts>("/api/v1/alerts");
+export const getEndpoints = () => get<EndpointList>("/api/v1/endpoints");
+
+/** Pin an endpoint (forcing it active) or release it back to auto-selection. */
+export async function setEndpointPinned(id: number, pinned: boolean): Promise<Endpoint> {
+  const r = await fetch(`/api/v1/endpoints/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ pinned }),
+  });
+  if (!r.ok) throw new ApiError(`endpoint update failed (${r.status})`, r.status);
+  return r.json() as Promise<Endpoint>;
+}
 
 export const getValidatorDetail = (address: string, window: number) =>
   get<ValidatorDetail>(`/api/v1/validators/${encodeURIComponent(address)}?window=${window}`);

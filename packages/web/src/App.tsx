@@ -13,6 +13,7 @@ import { ApiDocs } from "./pages/ApiDocs";
 import { Settings } from "./pages/Settings";
 import { Components } from "./pages/Components";
 import { BAD, OK, TX, TX2, TX3, WARN, mono, sans } from "./components/ui";
+import { EndpointSwitcher } from "./components/EndpointSwitcher";
 import { agoText, copyText, fmt } from "./lib";
 
 export type Theme = "dark" | "light";
@@ -170,6 +171,7 @@ export default function App() {
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
+              <EndpointSwitcher d={d} />
               <button
                 type="button"
                 onClick={() => setLive((l) => !l)}

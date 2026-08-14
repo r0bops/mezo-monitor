@@ -1,7 +1,7 @@
 /** Settings: chain identity, capability flags, indexer config and theme. */
 import type { Dashboard } from "../useDashboard";
 import type { Theme } from "../App";
-import { BRAND, OK, TX, TX2, TX3, mono, panel, sans } from "../components/ui";
+import { BAD, BRAND, OK, TX, TX2, TX3, WARN, mono, panel, sans } from "../components/ui";
 import { fmt } from "../lib";
 
 export function Settings({
@@ -64,6 +64,69 @@ export function Settings({
       </section>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <section style={{ ...panel, overflow: "hidden" }}>
+          <Head title="RPC endpoints" aside="failover order" />
+          {(d.endpoints?.endpoints ?? []).length === 0 && <Loading />}
+          {(d.endpoints?.endpoints ?? []).map((e) => (
+            <div
+              key={e.id}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                padding: "11px 16px",
+                borderBottom: "1px solid var(--line)",
+                background: e.is_active ? "var(--brandSoft)" : "transparent",
+              }}
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  marginTop: 4,
+                  flex: "none",
+                  background: e.healthy ? OK : e.consecutive_failures > 0 ? BAD : WARN,
+                }}
+              />
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ font: `600 11.5px/1 ${sans}`, color: TX }}>{e.label}</span>
+                  {e.is_active && (
+                    <span style={{ font: `600 9px/1 ${sans}`, color: BRAND }}>ACTIVE</span>
+                  )}
+                  {e.pinned && <span style={{ font: `600 9px/1 ${sans}`, color: BRAND }}>PINNED</span>}
+                  <span style={{ font: `400 10px/1 ${mono}`, color: TX3 }}>priority {e.priority}</span>
+                </div>
+                <span
+                  style={{
+                    font: `400 10.5px/1 ${mono}`,
+                    color: TX2,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={e.rpc_url ?? ""}
+                >
+                  {e.rpc_url ?? "—"}
+                </span>
+                <span style={{ font: `400 10px/1.4 ${mono}`, color: e.last_error ? BAD : TX3 }}>
+                  {e.last_error
+                    ? `${e.last_error} · ${e.consecutive_failures} consecutive failure${e.consecutive_failures === 1 ? "" : "s"}`
+                    : `height ${e.last_height ?? "—"} · ${e.latency_ms ?? "—"}ms`}
+                </span>
+              </div>
+            </div>
+          ))}
+          <div style={{ padding: "10px 16px" }}>
+            <span style={{ font: `400 11px/1.5 ${sans}`, color: TX3 }}>
+              Endpoints are declared in <code>chains/*.yaml</code>; health and the active choice
+              live in the database. The active node feeds the indexer — switching changes where new
+              blocks are read from, not the history already indexed.
+            </span>
+          </div>
+        </section>
+
         <section style={{ ...panel, overflow: "hidden" }}>
           <Head title="Capabilities" aside="read-only" />
           <div style={{ padding: "14px 16px", display: "flex", flexWrap: "wrap", gap: 8 }}>
