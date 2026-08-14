@@ -1,0 +1,22 @@
+[Unit]
+Description=Mezo Monitor CometBFT indexer
+Documentation=https://github.com/r0bops/mezo-monitor
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/mezo-monitor
+EnvironmentFile=/root/mezo-monitor/.env
+ExecStart=/usr/bin/pnpm --filter @mezo/adapter-cometbft start
+Restart=always
+RestartSec=10
+# A restart re-runs backfill and the gap scanner, so any blocks missed while
+# the service was down are repaired rather than left as permanent holes.
+StartLimitIntervalSec=0
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mezo-indexer
+
+[Install]
+WantedBy=multi-user.target
