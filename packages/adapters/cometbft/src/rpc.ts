@@ -70,11 +70,29 @@ export class CometbftRpc {
 
   private async http(p: string): Promise<any> {
     const url = this.rpcUrl.replace(/\/+$/, "") + p;
-    const res = await fetch(url, { headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
-    const json: any = await res.json();
-    if (json?.error) throw new Error(`RPC error ${url}: ${JSON.stringify(json.error)}`);
-    return json;
+    // Rate-limited public nodes answer 429 long before they go down; retrying
+    // with backoff keeps a shared endpoint usable instead of escalating every
+    // throttled call into an ingest failure (and from there into a failover).
+    let delayMs = 500;
+    for (let attempt = 0; ; attempt++) {
+      const res = await fetch(url, { headers: { accept: "application/json" } });
+      if (res.ok) {
+        const json: any = await res.json();
+        if (json?.error) throw new Error(`RPC error ${url}: ${JSON.stringify(json.error)}`);
+        return json;
+      }
+      if (res.status === 429 && attempt < 4) {
+        const retryAfter = Number(res.headers.get("retry-after"));
+        const waitMs =
+          Number.isFinite(retryAfter) && retryAfter > 0
+            ? Math.min(retryAfter * 1000, 15_000)
+            : delayMs;
+        delayMs = Math.min(delayMs * 2, 8_000);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+      throw new Error(`HTTP ${res.status} ${url}`);
+    }
   }
 
   /**

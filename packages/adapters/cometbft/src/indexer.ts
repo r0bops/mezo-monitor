@@ -263,12 +263,28 @@ async function listEndpoints(chainId: number): Promise<EndpointRow[]> {
   }));
 }
 
-/** Probe every endpoint and persist the outcome. */
+/**
+ * Probe every endpoint and persist the outcome.
+ *
+ * A 429 is not a dead node: it answered, it is just throttling. Such a probe
+ * leaves the previous health verdict and the failure counter alone (recording
+ * the rate-limit as the last error) — counting it as a failure flapped the
+ * endpoint unhealthy every minute against a strictly rate-limited public node,
+ * spamming "No healthy endpoint" events while ingestion kept working.
+ */
 async function probeAll(chainId: number): Promise<EndpointRow[]> {
   const rows = await listEndpoints(chainId);
   await Promise.all(
     rows.map(async (e) => {
       const r = await probe(e.rpc_url);
+      const rateLimited = !r.ok && /^HTTP 429/.test(r.error ?? "");
+      if (rateLimited) {
+        await db
+          .update(chainEndpoints)
+          .set({ lastError: "rate limited (HTTP 429)", updatedAt: new Date() })
+          .where(eq(chainEndpoints.id, e.id));
+        return;
+      }
       await db
         .update(chainEndpoints)
         .set(
@@ -488,8 +504,27 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
   void (async () => {
     let h = latest - 1;
     const floor = Math.max(1, latest - BACKFILL_DEPTH);
+
+    /**
+     * Fetching a block we already have is pure load on the node — and after a
+     * failover the backfill would otherwise re-request the entire trailing
+     * BACKFILL_DEPTH range from a rate-limited public endpoint. Existing
+     * heights in the range are skipped wholesale.
+     */
+    const present = new Set(
+      (
+        await db.execute<{ height: number }>(
+          sql`select height from blocks where chain_id = ${chainId} and height between ${floor} and ${latest}`,
+        )
+      ).rows.map((r) => Number(r.height)),
+    );
+
     let count = 0;
     while (h >= floor) {
+      if (present.has(h)) {
+        h--;
+        continue;
+      }
       try {
         await persistBlock(chainId, await rpc.block(h));
         h--;
@@ -501,6 +536,6 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
         break;
       }
     }
-    console.log(`backfill done down to height ${h + 1} (${count} blocks)`);
+    console.log(`backfill done down to height ${h + 1} (${count} fetched, ${present.size} already present)`);
   })();
 }
