@@ -323,6 +323,28 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
   const chainId = await upsertChain(cfg);
   await upsertEndpoints(chainId, cfg);
 
+  /**
+   * Retention: roll block_signatures older than the live windows into daily
+   * aggregates and delete the raw rows. It needs no RPC, so the first sweep
+   * runs before any network access — boot retried during an outage would
+   * otherwise never reach the code below, and an outage is precisely when the
+   * database work should keep making progress.
+   */
+  const sweepSignatures = async (): Promise<void> => {
+    try {
+      const r = await runRetentionSweep(db, chainId, RETAIN_BLOCKS);
+      if (r.cutoff > 0) {
+        console.log(
+          `retention: raw signatures kept above height ${r.cutoff} ` +
+            `(deleted ${r.deleted} rows into daily aggregates)`,
+        );
+      }
+    } catch (e) {
+      console.error("retention sweep failed:", (e as Error).message);
+    }
+  };
+  void sweepSignatures();
+
   // Probe before choosing, so the first selection is informed rather than
   // defaulting to whatever happens to be first in the config.
   const initial = chooseActive(await probeAll(chainId));
@@ -459,25 +481,7 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
   // self-heal: sweep for holes left by RPC failures or downtime
   setInterval(() => void runGapScanner(chainId, rpc), GAP_SCAN_MS);
 
-  /**
-   * Retention: roll block_signatures older than the live windows into daily
-   * aggregates and delete the raw rows. No RPC involved, so it runs (and
-   * catches up) even while every endpoint is down.
-   */
-  const sweepSignatures = async (): Promise<void> => {
-    try {
-      const r = await runRetentionSweep(db, chainId, RETAIN_BLOCKS);
-      if (r.cutoff > 0) {
-        console.log(
-          `retention: raw signatures kept above height ${r.cutoff} ` +
-            `(deleted ${r.deleted} rows into daily aggregates)`,
-        );
-      }
-    } catch (e) {
-      console.error("retention sweep failed:", (e as Error).message);
-    }
-  };
-  void sweepSignatures();
+  // periodic retention sweep (the first ran before RPC access, above)
   setInterval(() => void sweepSignatures(), RETENTION_SWEEP_MS);
 
   // backfill: backward from head to depth (archive node ⇒ no pruning boundary)
