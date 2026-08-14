@@ -183,12 +183,18 @@ export async function networkSummary(pool: pg.Pool, chainId: number): Promise<Ne
       from blocks where chain_id = $1
     ),
     recent as (
-      select time, signature_count, validator_count
-      from blocks where chain_id = $1 order by height desc limit 100
+      select height, time, signature_count, validator_count,
+             extract(epoch from (time - lag(time) over (order by height)))::float8 as dt
+      from (
+        select height, time, signature_count, validator_count
+        from blocks where chain_id = $1 order by height desc limit 100
+      ) newest
     ),
     bt as (
-      select extract(epoch from (max(time) - min(time)))::float8 * 1000
-             / nullif(count(*) - 1, 0) as avg_ms,
+      -- Per-block deltas with the same sanity filter used everywhere else:
+      -- a gap inside the window (outage, then catch-up) would otherwise be
+      -- spread across the average and report absurd block times.
+      select avg(dt) filter (where dt > 0 and dt < 600)::float8 * 1000 as avg_ms,
              sum(signature_count)::float8 / nullif(sum(validator_count), 0) * 100 as rate
       from recent
     ),
