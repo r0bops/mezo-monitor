@@ -96,6 +96,14 @@ export const validators = pgTable(
     address: text("address").notNull(), // consensus address (hex)
     pubKey: text("pub_key"), // consensus public key
     moniker: text("moniker"), // best-effort, nullable (PoA may expose no moniker)
+    /**
+     * Local, operator-assigned identity. Mezo is PoA with no staking module, so
+     * the chain may never expose monikers; a human label ("Ours", "Broker X")
+     * is the only way to answer "is mine healthy?".
+     */
+    label: text("label"),
+    /** Marks validators this operator cares about; surfaced across the UI. */
+    watched: boolean("watched").notNull().default(false),
     votingPower: integer("voting_power").default(0),
     isActive: boolean("is_active").notNull().default(true),
     firstSeenHeight: integer("first_seen_height"),
@@ -159,10 +167,44 @@ export const blockSignatures = pgTable(
 );
 
 /**
+ * Per-validator daily signing counts, rolled up from block_signatures by the
+ * retention sweep. Raw per-block signatures are kept for the long uptime
+ * window plus a margin; anything older is folded into this table and deleted,
+ * so history is bounded in storage without being lost.
+ */
+export const validatorSigningDaily = pgTable(
+  "validator_signing_daily",
+  {
+    chainId: integer("chain_id").notNull(),
+    day: timestamp("day", { withTimezone: true }).notNull(), // UTC date_trunc('day', block time)
+    validatorAddress: text("validator_address").notNull(),
+    slots: integer("slots").notNull(),
+    signed: integer("signed").notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.chainId, t.day, t.validatorAddress] }),
+  }),
+);
+
+/**
+ * Retention bookkeeping: the newest height whose block_signatures have been
+ * rolled into validator_signing_daily (and deleted). Ranges are aggregated at
+ * most once, so a sweep that re-runs can never double-count.
+ */
+export const signatureRetention = pgTable("signature_retention", {
+  chainId: integer("chain_id")
+    .primaryKey()
+    .references(() => chains.id, { onDelete: "cascade" }),
+  lastHeight: integer("last_height").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * Alert rule definitions. Thresholds are evaluated against the same derived
- * metrics the API serves (missed streak, uptime, indexer lag, block time), so
- * a rule never needs its own ingestion path. `metric` selects the evaluator;
- * `threshold` is compared with `comparator`.
+ * metrics the API serves (missed streak, uptime, indexer lag, block time,
+ * indexer staleness, endpoint health), so a rule never needs its own ingestion
+ * path. `metric` selects the evaluator; `threshold` is compared with
+ * `comparator`.
  */
 export const alertRules = pgTable(
   "alert_rules",
