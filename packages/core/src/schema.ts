@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   doublePrecision,
@@ -39,6 +40,50 @@ export const chains = pgTable("chains", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * RPC endpoints available for a chain. Seeded from `chains/*.yaml` (the source
+ * of truth for *which* endpoints exist) while selection and health live here,
+ * so a node chosen in the UI survives a restart instead of being overwritten
+ * by the config upsert.
+ */
+export const chainEndpoints = pgTable(
+  "chain_endpoints",
+  {
+    id: serial("id").primaryKey(),
+    chainId: integer("chain_id")
+      .notNull()
+      .references(() => chains.id, { onDelete: "cascade" }),
+    label: text("label").notNull(), // e.g. "primary", "backup"
+    rpcUrl: text("rpc_url").notNull(),
+    wsUrl: text("ws_url"),
+    /** Lower wins when several endpoints are healthy. */
+    priority: integer("priority").notNull().default(100),
+
+    /** Exactly one active endpoint per chain (enforced by a partial index). */
+    isActive: boolean("is_active").notNull().default(false),
+    /** A manual choice: automatic failover must not override it. */
+    pinned: boolean("pinned").notNull().default(false),
+
+    healthy: boolean("healthy").notNull().default(false),
+    lastHeight: integer("last_height"),
+    latencyMs: integer("latency_ms"),
+    lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // Idempotent YAML upserts key on the URL.
+    chainUrlUniq: uniqueIndex("chain_endpoints_chain_url_idx").on(t.chainId, t.rpcUrl),
+    oneActivePerChain: uniqueIndex("chain_endpoints_one_active_idx")
+      .on(t.chainId)
+      .where(sql`${t.isActive}`),
+    byChain: index("chain_endpoints_chain_idx").on(t.chainId),
+  }),
+);
 
 /** Known validators per chain (consensus address = signer/proposer identity). */
 export const validators = pgTable(

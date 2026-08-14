@@ -12,8 +12,24 @@ name: Mezo Mainnet
 chain_id: mezo_31612-1
 family: cometbft
 
+# Primary endpoint. Kept for backwards compatibility and used as the fallback
+# when no `endpoints` list is present.
 rpc_url: ${MEZO_RPC_URL}
 ws_url: ${MEZO_RPC_WS_URL}
+
+# Failover list, tried in priority order (lower wins). The indexer probes each
+# on an interval and switches automatically when the active one degrades; a
+# node pinned from the dashboard overrides that until unpinned.
+# Endpoints whose ${VAR} is unset are skipped with a warning.
+endpoints:
+  - label: primary
+    rpc_url: ${MEZO_RPC_URL}
+    ws_url: ${MEZO_RPC_WS_URL}
+    priority: 10
+  - label: backup
+    rpc_url: ${MEZO_RPC_URL_2}
+    ws_url: ${MEZO_RPC_WS_URL_2}
+    priority: 20
 
 # Outbound deep-links only (tx-level explorer). Never indexed here.
 blockscout_url: https://explorer.mezo.org
