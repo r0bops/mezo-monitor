@@ -225,6 +225,8 @@ export async function networkSummary(pool: pg.Pool, chainId: number): Promise<Ne
 export type ValidatorRow = {
   address: string;
   moniker: string | null;
+  label: string | null;
+  watched: boolean;
   pub_key: string | null;
   voting_power: number | null;
   is_active: boolean;
@@ -282,7 +284,7 @@ export async function validatorMetrics(pool: pg.Pool, chainId: number): Promise<
       where b.chain_id = $1 and b.height > head.h - $2 and b.proposer_address is not null
       group by b.proposer_address
     )
-    select v.address, v.moniker, v.pub_key, v.voting_power, v.is_active,
+    select v.address, v.moniker, v.label, v.watched, v.pub_key, v.voting_power, v.is_active,
            v.first_seen_height, v.last_seen_height,
            coalesce(a.slots_short, 0) as slots_short,
            coalesce(a.signed_short, 0) as signed_short,
@@ -312,6 +314,55 @@ export async function proposedTotal(pool: pg.Pool, chainId: number): Promise<num
     [chainId, SHORT_WINDOW],
   );
   return r.rows[0]?.n ?? 0;
+}
+
+/**
+ * Set a validator's local identity: an operator-assigned label and/or a
+ * "watched" flag. Mezo exposes no monikers, so this is the only way an
+ * operator can answer "is mine healthy?" — and it must survive the indexer's
+ * validator-set sync, which is why it lives in its own columns rather than
+ * overwriting `moniker`.
+ */
+export type ValidatorIdentityRow = {
+  address: string;
+  moniker: string | null;
+  label: string | null;
+  watched: boolean;
+};
+
+export async function setValidatorIdentity(
+  pool: pg.Pool,
+  chainId: number,
+  address: string,
+  patch: { label?: string | null; watched?: boolean },
+): Promise<ValidatorIdentityRow | null> {
+  const sets: string[] = [];
+  const args: unknown[] = [chainId, address];
+  if (patch.label !== undefined) {
+    const trimmed = patch.label === null ? null : patch.label.trim().slice(0, 64) || null;
+    args.push(trimmed);
+    sets.push(`label = $${args.length}`);
+  }
+  if (patch.watched !== undefined) {
+    args.push(patch.watched);
+    sets.push(`watched = $${args.length}`);
+  }
+  if (sets.length === 0) return null;
+
+  args.push(new Date());
+  const r = await pool.query(
+    `update validators set ${sets.join(", ")}, updated_at = $${args.length}
+     where chain_id = $1 and address = $2`,
+    args,
+  );
+  if (r.rowCount === 0) return null;
+
+  const back = await pool.query<ValidatorIdentityRow>(
+    `select address, moniker, label, watched
+     from validators where chain_id = $1 and address = $2`,
+    [chainId, address],
+  );
+  return back.rows[0] ?? null;
 }
 
 export type SlotRow = { height: number; signed: boolean | null; time: Date };
@@ -440,40 +491,57 @@ export async function recentBlockSigning(
 
 export type HourRow = { hour: Date; n: number };
 
-export async function blocksPerHour(pool: pg.Pool, chainId: number): Promise<HourRow[]> {
-  const r = await pool.query<HourRow>(
-    `select date_trunc('hour', time) as hour, count(*)::int as n
-     from blocks where chain_id = $1 and time > now() - interval '24 hours'
-     group by hour order by hour`,
-    [chainId],
+/** Block counts bucketed per hour (≤48h horizons) or per day (longer ones). */
+export type VolumeRow = { t: Date; n: number };
+
+export async function blocksPerBucket(
+  pool: pg.Pool,
+  chainId: number,
+  hours: number,
+): Promise<{ unit: "hour" | "day"; rows: VolumeRow[] }> {
+  const unit: "hour" | "day" = hours <= 48 ? "hour" : "day";
+  const r = await pool.query<VolumeRow>(
+    `select date_trunc($3, time) as t, count(*)::int as n
+     from blocks where chain_id = $1 and time > now() - ($2 || ' hours')::interval
+     group by t order by t`,
+    [chainId, hours, unit],
   );
-  return r.rows;
+  return { unit, rows: r.rows };
 }
 
 export type MetricStatsRow = {
   avg_block_time_s: number | null;
   p95_block_time_s: number | null;
-  blocks_24h: number;
-  signing_rate_24h: number | null;
+  blocks: number;
+  signing_rate: number | null;
 };
 
-export async function metricStats(pool: pg.Pool, chainId: number): Promise<MetricStatsRow> {
+/**
+ * Consensus stats over a trailing horizon of `hours`. A 24h window empties
+ * after any long outage — the wider horizons are what keep history visible
+ * through one.
+ */
+export async function metricStats(
+  pool: pg.Pool,
+  chainId: number,
+  hours: number = 24,
+): Promise<MetricStatsRow> {
   const r = await pool.query<MetricStatsRow>(
     `
     with b as (
       select signature_count, validator_count,
              extract(epoch from (time - lag(time) over (order by height)))::float8 as dt
       from blocks
-      where chain_id = $1 and time > now() - interval '24 hours'
+      where chain_id = $1 and time > now() - ($2 || ' hours')::interval
     )
     select avg(dt) filter (where dt > 0 and dt < 600) as avg_block_time_s,
            percentile_cont(0.95) within group (order by dt)
              filter (where dt > 0 and dt < 600) as p95_block_time_s,
-           count(*)::int as blocks_24h,
-           sum(signature_count)::float8 / nullif(sum(validator_count), 0) * 100 as signing_rate_24h
+           count(*)::int as blocks,
+           sum(signature_count)::float8 / nullif(sum(validator_count), 0) * 100 as signing_rate
     from b
     `,
-    [chainId],
+    [chainId, hours],
   );
   return r.rows[0];
 }

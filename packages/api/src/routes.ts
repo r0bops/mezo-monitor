@@ -10,7 +10,7 @@ import type { ChainHead } from "./chain-head.js";
 import {
   LONG_WINDOW,
   SHORT_WINDOW,
-  blocksPerHour,
+  blocksPerBucket,
   getChain,
   indexerStall,
   isBootstrapSet,
@@ -22,6 +22,7 @@ import {
   seriesBuckets,
   setChanges,
   setEndpointPinned,
+  setValidatorIdentity,
   signingSlots,
   validatorMetrics,
   type ChainRow,
@@ -51,6 +52,8 @@ export type Deps = {
 type ValidatorView = {
   address: string;
   moniker: string | null;
+  label: string | null;
+  watched: boolean;
   pub_key: string | null;
   voting_power: number | null;
   is_active: boolean;
@@ -73,6 +76,8 @@ function viewValidator(v: ValidatorRow, proposedTotalCount: number): ValidatorVi
   return {
     address: v.address,
     moniker: v.moniker,
+    label: v.label,
+    watched: v.watched,
     pub_key: v.pub_key,
     voting_power: v.voting_power,
     is_active: v.is_active,
@@ -265,6 +270,33 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     },
   );
 
+  app.patch<{
+    Params: { address: string };
+    Body: { label?: string | null; watched?: boolean };
+  }>("/api/v1/validators/:address", async (req, reply) => {
+    const chain = requireChain(reply);
+    if (!chain) return;
+    const { label, watched } = req.body ?? {};
+    if (label === undefined && watched === undefined) {
+      reply.code(400);
+      return { error: "body must include { label: string|null } and/or { watched: boolean }" };
+    }
+    if (label !== undefined && label !== null && typeof label !== "string") {
+      reply.code(400);
+      return { error: "label must be a string or null" };
+    }
+    if (watched !== undefined && typeof watched !== "boolean") {
+      reply.code(400);
+      return { error: "watched must be a boolean" };
+    }
+    const row = await setValidatorIdentity(pool, chain.id, req.params.address, { label, watched });
+    if (!row) {
+      reply.code(404);
+      return { error: "validator not found", address: req.params.address };
+    }
+    return row;
+  });
+
   app.get("/api/v1/validator-set", async (_req, reply) => {
     const chain = requireChain(reply);
     if (!chain) return;
@@ -292,13 +324,18 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     };
   });
 
-  app.get("/api/v1/metrics", async (_req, reply) => {
+  app.get<{ Querystring: { hours?: string } }>("/api/v1/metrics", async (req, reply) => {
     const chain = requireChain(reply);
     if (!chain) return;
-    const [stats, day, hours, rows, total] = await Promise.all([
-      metricStats(pool, chain.id),
-      seriesBuckets(pool, chain.id, 24 * 60, 60),
-      blocksPerHour(pool, chain.id),
+    // Fixed horizons, not arbitrary numbers: a 17h outage empties a 24h
+    // window, so 7d/30d exist to keep history visible through one.
+    const hours = [24, 168, 720].includes(Number(req.query.hours))
+      ? Number(req.query.hours)
+      : 24;
+    const [stats, day, volume, rows, total] = await Promise.all([
+      metricStats(pool, chain.id, hours),
+      seriesBuckets(pool, chain.id, hours * 60, hours <= 24 ? 60 : 120),
+      blocksPerBucket(pool, chain.id, hours),
       metricsCache.get(chain.id),
       proposedCache.get(chain.id),
     ]);
@@ -312,6 +349,7 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         status: v.status,
       }));
     return {
+      hours,
       stats,
       series: day.map((b) => ({
         t: b.bucket,
@@ -319,7 +357,10 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         signing_rate: b.signing_rate,
         n: b.n,
       })),
-      blocks_per_hour: hours.map((h) => ({ t: h.hour, n: h.n })),
+      volume: {
+        unit: volume.unit,
+        points: volume.rows.map((r) => ({ t: r.t, n: r.n })),
+      },
       proposer_distribution: dist,
     };
   });
