@@ -21,3 +21,6 @@ pnpm-debug.log*
 
 # drizzle query cache (migrations themselves ARE tracked)
 .drizzle/
+
+# design handoff bundles
+*-handoff.zip

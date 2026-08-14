@@ -8,7 +8,7 @@ validator signing — uptime, missed-block streaks, proposer share, and
 validator-set changes — and exposes them via a REST API. Consensus-level
 analytics only; transaction-level detail is left to Blockscout.
 
-Phase 1: indexer + REST API. No frontend.
+Phase 1: indexer + REST API. Phase 2: React dashboard, served by the API at `/`.
 
 ## Stack
 - TypeScript (Node 20+, ESM), pnpm workspaces
@@ -20,23 +20,82 @@ Phase 1: indexer + REST API. No frontend.
 |------|----------------|
 | `packages/core` | DB schema, migrations, shared db client |
 | `packages/adapters/cometbft` | Generic CometBFT indexer (block ingest + validator-set tracking) |
-| `packages/api` | Fastify REST API |
+| `packages/api` | Fastify REST API + dashboard host |
+| `packages/web` | React dashboard (Vite) |
 | `chains/*.yaml` | Per-chain config (Mezo: `chains/mezo.yaml`) |
 
 ## Quickstart
 ```bash
 pnpm install                 # install deps
-cp .env.example .env         # then edit .env: set MEZO_RPC_URL / MEZO_RPC_WS_URL
-pnpm db:up                   # start Postgres (docker)
+cp .env.example .env         # set MEZO_RPC_URL / MEZO_RPC_WS_URL, and API_HOST
+pnpm db:up                   # start Postgres (docker, bound to 127.0.0.1)
 pnpm db:migrate              # apply migrations
 pnpm dev                     # run indexer + API concurrently
+pnpm test                    # derivation + drain tests (throwaway test database)
 ```
-API: http://localhost:3000
+
+The API binds `API_HOST` (default `127.0.0.1`) so it is never accidentally
+published on a host with a public IP. Set it to your Tailscale address
+(`tailscale ip -4`) to reach the dashboard over the tailnet.
+
+## Running as a service
+```bash
+sudo cp deploy/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now mezo-indexer mezo-api
+
+systemctl status mezo-indexer mezo-api
+journalctl -u mezo-indexer -f
+```
+Both units restart on failure and survive reboot. Restarting the indexer re-runs
+backfill and the gap scanner, so blocks missed while it was down are repaired.
 
 ## Endpoints
-- `GET /api/v1/validators` — list (moniker, address, uptime % @1k/10k, missed streak, proposer share)
-- `GET /api/v1/validators/:address` — detail + last 500 signing slots (heatmap)
-- `GET /api/v1/network` — latest height, avg block time (100-block window), active validator count, indexer lag
+- `GET /api/v1/network` — latest height, avg block time (100-block window), signing rate, active
+  validator count, and indexer lag against chain head (polled from CometBFT `/status`)
+- `GET /api/v1/validators` — list (address, uptime % @1k/10k, missed streak, proposer share)
+- `GET /api/v1/validators/:address?window=N` — detail + signing slots (heatmap). `signed: null`
+  means the validator was outside the set at that height
+- `GET /api/v1/validator-set` — current membership + add/remove history
+- `GET /api/v1/metrics` — 24h aggregates, bucketed series, proposer distribution
+- `GET /api/v1/series?minutes=&buckets=` — block time / signing rate / block count over a window
+- `GET /api/v1/alerts` — rules + event feed · `PATCH /api/v1/alerts/rules/:id` —
+  `{ enabled }` and/or `{ webhook_url }`
+- `GET /api/v1/config` — chain identity, capabilities, indexer settings (RPC credentials redacted)
+
+Values that genuinely cannot be known are `null`, never `0` — an unreachable RPC leaves
+`indexer_lag_blocks` null, and an unbackfilled window reports slot counts instead of a percentage.
+
+## Dashboard
+The API serves the built SPA at `/`. Build it first:
+
+```bash
+pnpm --filter @mezo/web build   # writes packages/web/dist, served by the API
+pnpm --filter @mezo/web dev     # or: Vite dev server on :5173, proxying /api to :3000
+```
+
+Pages: Overview, Validators, Validator Set, Metrics, Alerts, API & Docs, Settings. Dark and light
+themes. Append `?debug` to the URL for the state switcher, which forces each loading/empty/stalled
+/backfill state for visual checking (it is otherwise dev-only).
+
+## Alerting
+Rules live in `alert_rules` and are evaluated every 30s by the API against the same derived metrics
+it serves — no separate ingestion path. Events are edge-triggered: opened when a condition starts
+holding, resolved when it clears. The default rules (missed streak, uptime, indexer lag, block time,
+validator-set change) are seeded on first start; the set-change rule ships disabled so a genesis
+bootstrap doesn't emit one event per validator.
+
+Set a rule's `webhook_url` to receive deliveries — a plain JSON POST carrying a `text` summary plus
+structured fields, which Slack, Discord and PagerDuty incoming webhooks all accept:
+
+```bash
+curl -X PATCH "$API/api/v1/alerts/rules/3" -H 'content-type: application/json' \
+  -d '{"webhook_url":"https://hooks.slack.com/services/..."}'
+```
+
+Delivery runs as a pass separate from evaluation, so a dead endpoint can never stall alerting.
+Each event notifies once when it fires and again when it clears, with bounded retries and the last
+error recorded and shown on the Alerts page.
 
 ## Adding a second CometBFT chain
 The core schema is chain-agnostic and the CometBFT adapter is generic, so adding
@@ -67,3 +126,10 @@ a chain is **a new YAML file only — no code changes**:
   stops gracefully at the pruning boundary.
 - **Mezo is PoA** — `capabilities` disables delegations, governance, slashing,
   commission. None of those are modeled.
+- **No block is skipped** — live ingest advances one height at a time and never
+  jumps the cursor to a newly-observed head; a failed fetch stops the drain so
+  the next tick retries rather than stranding a hole. A gap scanner sweeps the
+  trailing range periodically and refetches anything missing.
+- **Fail fast, not silent** — the DB pool sets connect/statement/query timeouts
+  so a wedged database surfaces as the dashboard's "unreachable" state instead
+  of hanging requests forever.
