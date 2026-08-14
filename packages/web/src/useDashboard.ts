@@ -1,0 +1,195 @@
+/**
+ * Single polling loop behind every page.
+ *
+ * The system state is derived from what the API reports, with one addition the
+ * server cannot make: if the request itself fails we are in `dberror` — the
+ * API can't tell us its database is unreachable when we never reached the API.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  getAlerts,
+  getConfig,
+  getMetrics,
+  getNetwork,
+  getSeries,
+  getValidatorDetail,
+  getValidatorSet,
+  getValidators,
+  type Alerts,
+  type Config,
+  type Metrics,
+  type Network,
+  type Series,
+  type SystemState,
+  type Validator,
+  type ValidatorDetail,
+  type ValidatorSet,
+} from "./api";
+
+/** The dev switcher can also force the genesis-set presentation. */
+export type DevState = SystemState | "bootstrap";
+
+export const DEV_STATES: { id: DevState; label: string }[] = [
+  { id: "normal", label: "Normal" },
+  { id: "loading", label: "Loading" },
+  { id: "empty", label: "Bootstrapping" },
+  { id: "stopped", label: "Indexer stopped" },
+  { id: "dberror", label: "DB unreachable" },
+  { id: "backfill", label: "Backfill" },
+  { id: "bootstrap", label: "Genesis set" },
+];
+
+const REFRESH_MS = 10_000;
+const SLOW_REFRESH_MS = 30_000;
+
+export type Dashboard = {
+  net: Network | null;
+  validators: Validator[];
+  set: ValidatorSet | null;
+  metrics: Metrics | null;
+  series: Series | null;
+  alerts: Alerts | null;
+  config: Config | null;
+  detail: ValidatorDetail | null;
+  /** Effective state after any dev override. */
+  state: SystemState;
+  bootstrap: boolean;
+  error: string | null;
+  lastUpdated: Date | null;
+  /** Seconds since the last successful poll — drives the "Updated Ns ago". */
+  agoSeconds: number;
+  refresh: () => void;
+  setAlerts: (a: Alerts) => void;
+};
+
+export function useDashboard(opts: {
+  live: boolean;
+  override: DevState | null;
+  selected: string | null;
+  window: number;
+}): Dashboard {
+  const { live, override, selected, window: win } = opts;
+
+  const [net, setNet] = useState<Network | null>(null);
+  const [validators, setValidators] = useState<Validator[]>([]);
+  const [set, setSet] = useState<ValidatorSet | null>(null);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [series, setSeries] = useState<Series | null>(null);
+  const [alerts, setAlerts] = useState<Alerts | null>(null);
+  const [config, setConfig] = useState<Config | null>(null);
+  const [detail, setDetail] = useState<ValidatorDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [agoSeconds, setAgoSeconds] = useState(0);
+  const [tick, setTick] = useState(0);
+
+  const booted = useRef(false);
+
+  const refresh = useCallback(() => setTick((t) => t + 1), []);
+
+  // Fast loop: the numbers that change every block.
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const [n, v, s] = await Promise.all([getNetwork(), getValidators(), getSeries(60, 60)]);
+        if (cancelled) return;
+        setNet(n);
+        setValidators(v.validators);
+        setSeries(s);
+        setError(null);
+        setLastUpdated(new Date());
+        setAgoSeconds(0);
+        booted.current = true;
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      }
+    };
+    void run();
+    if (!live) return () => { cancelled = true; };
+    const id = setInterval(run, REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [live, tick]);
+
+  // Slow loop: aggregates that don't need block cadence.
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const results = await Promise.allSettled([
+        getValidatorSet(),
+        getMetrics(),
+        getAlerts(),
+      ]);
+      if (cancelled) return;
+      if (results[0].status === "fulfilled") setSet(results[0].value);
+      if (results[1].status === "fulfilled") setMetrics(results[1].value);
+      if (results[2].status === "fulfilled") setAlerts(results[2].value);
+    };
+    void run();
+    if (!live) return () => { cancelled = true; };
+    const id = setInterval(run, SLOW_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [live, tick]);
+
+  // Config is static for the process lifetime.
+  useEffect(() => {
+    let cancelled = false;
+    getConfig()
+      .then((c) => !cancelled && setConfig(c))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Selected validator's signing slots, refetched when the window changes.
+  useEffect(() => {
+    let cancelled = false;
+    if (!selected) {
+      setDetail(null);
+      return;
+    }
+    getValidatorDetail(selected, win)
+      .then((d) => !cancelled && setDetail(d))
+      .catch(() => !cancelled && setDetail(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, win, live, tick]);
+
+  // "Updated Ns ago" ticks independently of the fetch loop.
+  useEffect(() => {
+    const id = setInterval(() => setAgoSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const derived: SystemState = error
+    ? "dberror"
+    : !booted.current || !net
+      ? "loading"
+      : net.status;
+
+  return {
+    net,
+    validators,
+    set,
+    metrics,
+    series,
+    alerts,
+    config,
+    detail,
+    state: override && override !== "bootstrap" ? override : derived,
+    bootstrap: override === "bootstrap" ? true : (net?.vset_bootstrap ?? false),
+    error,
+    lastUpdated,
+    agoSeconds,
+    refresh,
+    setAlerts,
+  };
+}

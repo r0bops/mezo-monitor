@@ -1,0 +1,178 @@
+/** Settings: chain identity, capability flags, indexer config and theme. */
+import type { Dashboard } from "../useDashboard";
+import type { Theme } from "../App";
+import { BRAND, OK, TX, TX2, TX3, mono, panel, sans } from "../components/ui";
+import { fmt } from "../lib";
+
+export function Settings({
+  d,
+  theme,
+  onTheme,
+}: {
+  d: Dashboard;
+  theme: Theme;
+  onTheme: (t: Theme) => void;
+}) {
+  const cfg = d.config;
+  const caps = cfg?.capabilities ?? d.net?.chain.capabilities;
+
+  const chainRows: [string, string][] = cfg
+    ? [
+        ["slug", cfg.chain.slug],
+        ["name", cfg.chain.name],
+        ["chain_id", cfg.chain.chain_id],
+        ["family", cfg.chain.family],
+        ["rpc_url", cfg.chain.rpc_url ?? "—"],
+        ["ws_url", cfg.chain.ws_url ?? "—"],
+        ["blockscout_url", cfg.chain.blockscout_url ?? "—"],
+      ]
+    : [];
+
+  const indexerRows: [string, string][] = cfg
+    ? [
+        ["BACKFILL_DEPTH", `${fmt(cfg.indexer.backfill_depth)} blocks`],
+        ["Ingestion", cfg.indexer.ingestion],
+        ["Set poll interval", `${Math.round(cfg.indexer.poll_interval_ms / 1000)}s`],
+        ["Database", cfg.indexer.database],
+        ["Uptime windows", `${fmt(cfg.windows.short)} / ${fmt(cfg.windows.long)} blocks`],
+      ]
+    : [];
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "start", maxWidth: 1000 }}>
+      <section style={{ ...panel, overflow: "hidden" }}>
+        <Head title="Chain configuration" aside="chains/*.yaml" mono />
+        {chainRows.length === 0 && <Loading />}
+        {chainRows.map(([k, v]) => (
+          <div key={k} style={rowStyle}>
+            <span style={{ font: `500 11.5px/1 ${mono}`, color: TX3 }}>{k}</span>
+            <span
+              style={{
+                font: `500 11.5px/1 ${mono}`,
+                color: TX,
+                textAlign: "right",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={v}
+            >
+              {v}
+            </span>
+          </div>
+        ))}
+      </section>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <section style={{ ...panel, overflow: "hidden" }}>
+          <Head title="Capabilities" aside="read-only" />
+          <div style={{ padding: "14px 16px", display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {caps ? (
+              Object.entries(caps).map(([k, on]) => (
+                <span
+                  key={k}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid var(--line)",
+                    background: on ? "var(--okSoft)" : "var(--panel2)",
+                  }}
+                >
+                  <span style={{ font: `500 11px/1 ${mono}`, color: TX2 }}>{k}</span>
+                  <span style={{ font: `600 11px/1 ${mono}`, color: on ? OK : TX3 }}>
+                    {String(on)}
+                  </span>
+                </span>
+              ))
+            ) : (
+              <Loading />
+            )}
+          </div>
+          {caps?.poa && (
+            <div style={{ padding: "0 16px 14px" }}>
+              <span style={{ font: `400 11px/1.5 ${sans}`, color: TX3 }}>
+                This chain is Proof-of-Authority: delegations, governance and slashing are not
+                modelled by the indexer.
+              </span>
+            </div>
+          )}
+        </section>
+
+        <section style={{ ...panel, overflow: "hidden" }}>
+          <Head title="Indexer" />
+          {indexerRows.length === 0 && <Loading />}
+          {indexerRows.map(([k, v]) => (
+            <div key={k} style={rowStyle}>
+              <span style={{ font: `500 11.5px/1 ${mono}`, color: TX3 }}>{k}</span>
+              <span style={{ font: `500 11.5px/1 ${mono}`, color: TX }}>{v}</span>
+            </div>
+          ))}
+        </section>
+
+        <section style={{ ...panel, overflow: "hidden" }}>
+          <Head title="Appearance" />
+          <div style={{ padding: "14px 16px", display: "flex", gap: 8 }}>
+            {(["dark", "light"] as Theme[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => onTheme(t)}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  font: `600 11.5px/1 ${sans}`,
+                  border: `1px solid ${theme === t ? "var(--brand)" : "var(--line)"}`,
+                  background: theme === t ? "var(--brandSoft)" : "transparent",
+                  color: theme === t ? BRAND : TX2,
+                  textTransform: "capitalize",
+                }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+const rowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 16,
+  padding: "11px 16px",
+  borderBottom: "1px solid var(--line)",
+};
+
+function Head({ title, aside, mono: isMono }: { title: string; aside?: string; mono?: boolean }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "14px 16px 12px",
+        borderBottom: "1px solid var(--line)",
+      }}
+    >
+      <h2 style={{ margin: 0, font: `600 13px/1 ${sans}`, color: TX }}>{title}</h2>
+      {aside && (
+        <span style={{ font: `400 10.5px/1 ${isMono ? mono : sans}`, color: TX3 }}>{aside}</span>
+      )}
+    </div>
+  );
+}
+
+function Loading() {
+  return (
+    <div style={{ padding: "24px 16px", font: `400 12px/1 ${sans}`, color: TX3 }}>
+      Waiting for /api/v1/config…
+    </div>
+  );
+}
