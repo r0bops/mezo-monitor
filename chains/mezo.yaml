@@ -35,6 +35,10 @@ endpoints:
     rpc_url: ${MEZO_RPC_URL_2}
     ws_url: ${MEZO_RPC_WS_URL_2}
     priority: 20
+  - label: backup-2
+    rpc_url: ${MEZO_RPC_URL_3}
+    ws_url: ${MEZO_RPC_WS_URL_3}
+    priority: 30
 
 # Outbound deep-links only (tx-level explorer). Never indexed here.
 blockscout_url: https://explorer.mezo.org

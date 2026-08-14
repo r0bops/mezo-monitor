@@ -5,6 +5,18 @@ import WebSocket from "ws";
  * self-healing WebSocket subscription for NewBlock events.
  * (Response typing is owned by parsers.ts; this returns raw JSON.)
  */
+
+/**
+ * When the node kept answering 429 even after backoff, stand down optional
+ * traffic (status polls, gap repair) until this moment. Live block fetches
+ * still try — they are the point of the indexer — but background loops
+ * stopping means the rate budget goes to ingestion instead of to a /status
+ * call every five seconds.
+ */
+let throttledUntil = 0;
+export const isThrottled = (): boolean => Date.now() < throttledUntil;
+const THROTTLE_COOLDOWN_MS = 30_000;
+
 export class CometbftRpc {
   /** Live subscription, retained so an endpoint switch can rebuild it. */
   private subscription: { close: () => void } | null = null;
@@ -91,6 +103,7 @@ export class CometbftRpc {
         await new Promise((r) => setTimeout(r, waitMs));
         continue;
       }
+      if (res.status === 429) throttledUntil = Date.now() + THROTTLE_COOLDOWN_MS;
       throw new Error(`HTTP ${res.status} ${url}`);
     }
   }

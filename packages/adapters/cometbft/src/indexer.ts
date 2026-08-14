@@ -14,7 +14,7 @@ import { chooseActive, probe, type EndpointRow } from "./endpoints";
 import { fetchMonikers, syncMonikers } from "./monikers";
 import { parseBlock } from "./parsers";
 import { runRetentionSweep, DEFAULT_RETAIN_BLOCKS } from "./retention";
-import { CometbftRpc } from "./rpc";
+import { CometbftRpc, isThrottled } from "./rpc";
 
 const POLL_MS = Number(process.env.POLL_INTERVAL_MS ?? 60000);
 const BACKFILL_DEPTH = Number(process.env.BACKFILL_DEPTH ?? 50000);
@@ -202,6 +202,9 @@ async function findGaps(chainId: number, limit: number): Promise<number[]> {
  * sweep is reporting a broken ingest path, and that should be visible.
  */
 async function runGapScanner(chainId: number, rpc: CometbftRpc): Promise<void> {
+  // Repairs are valuable but not urgent; a throttled node's budget belongs to
+  // live ingestion. The next sweep retries whatever is still missing.
+  if (isThrottled()) return;
   try {
     const gaps = await findGaps(chainId, GAP_REPAIR_LIMIT);
     if (gaps.length === 0) return;
@@ -263,6 +266,7 @@ async function listEndpoints(chainId: number): Promise<EndpointRow[]> {
     last_height: r.lastHeight,
     latency_ms: r.latencyMs,
     consecutive_failures: r.consecutiveFailures,
+    last_error: r.lastError,
   }));
 }
 
@@ -504,8 +508,11 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
   });
 
   // fallback: HTTP poll every 5s (catches missed WS events, and drives the
-  // drain forward when the socket is down)
+  // drain forward when the socket is down). Skipped while the node is
+  // rate-limiting us, so the budget goes to block fetches — the WebSocket
+  // still drives ingestion meanwhile.
   setInterval(() => {
+    if (isThrottled()) return;
     rpc
       .status()
       .then((s: any) => drainTo(Number(s.result.sync_info.latest_block_height)))

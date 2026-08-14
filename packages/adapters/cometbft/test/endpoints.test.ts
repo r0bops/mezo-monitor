@@ -25,9 +25,38 @@ function ep(over: Partial<EndpointRow> = {}): EndpointRow {
     last_height: 1_000,
     latency_ms: 50,
     consecutive_failures: 0,
+    last_error: null,
     ...over,
   };
 }
+
+describe("rate-limit-aware selection", () => {
+  it("prefers an unthrottled endpoint over a higher-priority throttled one", () => {
+    const throttled = ep({ id: 1, label: "primary", priority: 10, last_error: "rate limited (HTTP 429)" });
+    const slow = ep({ id: 2, label: "backup", priority: 30, latency_ms: 500 });
+    const choice = chooseActive([throttled, slow]);
+    expect(choice.endpoint?.id).toBe(2);
+  });
+
+  it("a throttled endpoint is still healthy — it is not an outage", () => {
+    const throttled = ep({ last_error: "rate limited (HTTP 429)" });
+    expect(isHealthy(throttled, [throttled])).toBe(true);
+  });
+
+  it("falls back to the throttled endpoint when it is all there is", () => {
+    const throttled = ep({ id: 1, last_error: "rate limited (HTTP 429)" });
+    const dead = ep({ id: 2, label: "backup", priority: 20, healthy: false });
+    const choice = chooseActive([throttled, dead]);
+    expect(choice.endpoint?.id).toBe(1);
+    expect(choice.reason).toContain("rate-limited");
+  });
+
+  it("returns to priority order once the throttle marker clears", () => {
+    const recovered = ep({ id: 1, label: "primary", priority: 10, last_error: null });
+    const slow = ep({ id: 2, label: "backup", priority: 30, latency_ms: 500 });
+    expect(chooseActive([recovered, slow]).endpoint?.id).toBe(1);
+  });
+});
 
 describe("isHealthy", () => {
   it("rejects an endpoint past the failure threshold", () => {

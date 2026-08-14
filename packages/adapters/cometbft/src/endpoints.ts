@@ -30,6 +30,8 @@ export type EndpointRow = {
   last_height: number | null;
   latency_ms: number | null;
   consecutive_failures: number;
+  /** Set to "rate limited (HTTP 429)" by the prober when throttled. */
+  last_error: string | null;
 };
 
 export type ProbeResult = {
@@ -99,13 +101,20 @@ export function chooseActive(endpoints: EndpointRow[]): Choice {
 
   const healthy = endpoints
     .filter((e) => isHealthy(e, endpoints))
-    .sort((a, b) => a.priority - b.priority || (a.latency_ms ?? 1e9) - (b.latency_ms ?? 1e9));
+    .sort(
+      (a, b) =>
+        throttled(a) - throttled(b) ||
+        a.priority - b.priority ||
+        (a.latency_ms ?? 1e9) - (b.latency_ms ?? 1e9),
+    );
 
   if (healthy.length > 0) {
     const best = healthy[0];
     const reason = pinned
       ? `pinned "${pinned.label}" is unhealthy — using "${best.label}"`
-      : `healthiest by priority: "${best.label}"`;
+      : throttled(best)
+        ? `all healthy endpoints are rate-limited — using "${best.label}" by priority`
+        : `healthiest by priority: "${best.label}"`;
     return { endpoint: best, reason };
   }
 
@@ -124,4 +133,15 @@ export function isHealthy(e: EndpointRow, all: EndpointRow[]): boolean {
     if (bestHeight - e.last_height > STALL_THRESHOLD_BLOCKS) return false;
   }
   return true;
+}
+
+/**
+ * Being rate-limited is not being unhealthy — the node answers, it just
+ * refuses bulk traffic — so it must not trip the no-healthy-endpoint alert.
+ * But among healthy endpoints a throttled one loses to an unthrottled one
+ * regardless of priority: a node that 429s every /block is worse than a slower
+ * node that serves them.
+ */
+function throttled(e: EndpointRow): number {
+  return e.last_error?.startsWith("rate limited") ? 1 : 0;
 }
