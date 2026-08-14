@@ -53,14 +53,19 @@ backfill and the gap scanner, so blocks missed while it was down are repaired.
 ## Endpoints
 - `GET /api/v1/network` — latest height, avg block time (100-block window), signing rate, active
   validator count, and indexer lag against chain head (polled from CometBFT `/status`)
-- `GET /api/v1/validators` — list (address, uptime % @1k/10k, missed streak, proposer share)
+- `GET /api/v1/validators` — list (address, moniker, local label, uptime % @1k/10k, missed streak,
+  proposer share)
 - `GET /api/v1/validators/:address?window=N` — detail + signing slots (heatmap). `signed: null`
   means the validator was outside the set at that height
+- `PATCH /api/v1/validators/:address` — `{ label: string|null }` and/or `{ watched: boolean }`:
+  local, operator-assigned identity (labels are never overwritten by ingestion)
 - `GET /api/v1/validator-set` — current membership + add/remove history
-- `GET /api/v1/metrics` — 24h aggregates, bucketed series, proposer distribution
+- `GET /api/v1/metrics?hours=24|168|720` — aggregates, bucketed series, per-hour (24h) or
+  per-day (7d/30d) block volume, proposer distribution
 - `GET /api/v1/series?minutes=&buckets=` — block time / signing rate / block count over a window
 - `GET /api/v1/alerts` — rules + event feed · `PATCH /api/v1/alerts/rules/:id` —
   `{ enabled }` and/or `{ webhook_url }`
+- `GET /api/v1/endpoints` — endpoint health · `PATCH /api/v1/endpoints/:id` — `{ pinned }`
 - `GET /api/v1/config` — chain identity, capabilities, indexer settings (RPC credentials redacted)
 
 Values that genuinely cannot be known are `null`, never `0` — an unreachable RPC leaves
@@ -116,6 +121,17 @@ holding, resolved when it clears. The default rules (missed streak, uptime, inde
 validator-set change) are seeded on first start; the set-change rule ships disabled so a genesis
 bootstrap doesn't emit one event per validator.
 
+Two of the defaults exist because the RPC-dependent metrics go silent exactly when they matter:
+
+- **Indexer stale** (`indexer_stale`) — seconds since the newest indexed block, derived from the
+  database alone. Indexer *lag* needs a reachable RPC to know the chain head; when the RPC is
+  unreachable, lag is null and the lag rule is skipped. Staleness still knows the truth, so a dead
+  data source produces an event instead of silence. The threshold is the larger of the stored value
+  and the block-time-derived stall threshold (the same heuristic as the dashboard's "stopped"
+  status — they share one function).
+- **No healthy endpoint** (`healthy_endpoints`) — no endpoint row with `healthy = true`, which
+  distinguishes "a node died and we failed over cleanly" (no event) from "nowhere left to go".
+
 Set a rule's `webhook_url` to receive deliveries — a plain JSON POST carrying a `text` summary plus
 structured fields, which Slack, Discord and PagerDuty incoming webhooks all accept:
 
@@ -126,7 +142,27 @@ curl -X PATCH "$API/api/v1/alerts/rules/3" -H 'content-type: application/json' \
 
 Delivery runs as a pass separate from evaluation, so a dead endpoint can never stall alerting.
 Each event notifies once when it fires and again when it clears, with bounded retries and the last
-error recorded and shown on the Alerts page.
+error recorded and shown on the Alerts page. With no webhook set, rules are dashboard-only — events
+are recorded, nothing is sent.
+
+## Validator identity
+CometBFT `/validators` exposes no names, but Mezo's custom `x/poa` module does: the indexer fetches
+`{lcd_url}/poa/v1/validators` (`MEZO_LCD_URL` in `.env`, `lcd_url` in `chains/*.yaml`), derives each
+entry's consensus address from its ed25519 pubkey (`sha256(key)[:20]`, the same derivation CometBFT
+uses), and writes the monikers onto the indexed validators. A wrong-chain LCD matches nothing, so it
+cannot poison the mapping. Unset `MEZO_LCD_URL` simply leaves validators nameless.
+
+On top of the chain-sourced monikers, each validator has a local `label` and a `watched` flag
+editable from the Validators page — "is mine healthy?" needs an operator's own names, not just the
+chain's.
+
+## Signature retention
+`block_signatures` grows ~20 rows per block (~480k/day). Raw rows are kept for the long uptime
+window (10,000 blocks) plus a margin (12,000 total; `SIGNATURE_RETAIN_BLOCKS`), and older rows are
+rolled into `validator_signing_daily` (per-validator, per-day slot/signed counts) and deleted. The
+sweep (`SIGNATURE_RETENTION_SWEEP_MS`, default 6h) aggregates each height range exactly once inside
+a transaction with the `signature_retention` watermark, so re-runs never double-count. It needs no
+RPC and runs even while every endpoint is down.
 
 ## Adding a second CometBFT chain
 The core schema is chain-agnostic and the CometBFT adapter is generic, so adding
