@@ -26,6 +26,12 @@ const ChainConfigSchema = z.object({
   rpc_url: z.string(),
   ws_url: z.string().optional(),
   /**
+   * Cosmos LCD base URL (e.g. https://host/mezo) for modules the CometBFT RPC
+   * cannot serve — Mezo's x/poa validator list carries the monikers. Nullable
+   * for the same reason as endpoint URLs: an unset ${VAR} parses as null.
+   */
+  lcd_url: z.string().nullable().optional(),
+  /**
    * Optional failover list. When absent, the top-level rpc_url/ws_url is used
    * as a single endpoint, so existing single-node configs keep working.
    */

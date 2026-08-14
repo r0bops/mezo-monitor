@@ -11,6 +11,7 @@ import {
 } from "@mezo/core";
 import { resolveEndpoints, type ChainConfig } from "./config";
 import { chooseActive, probe, type EndpointRow } from "./endpoints";
+import { fetchMonikers, syncMonikers } from "./monikers";
 import { parseBlock } from "./parsers";
 import { runRetentionSweep, DEFAULT_RETAIN_BLOCKS } from "./retention";
 import { CometbftRpc } from "./rpc";
@@ -31,6 +32,8 @@ const INGEST_FAILURES_BEFORE_RESELECT = 3;
 const RETENTION_SWEEP_MS = Number(process.env.SIGNATURE_RETENTION_SWEEP_MS ?? 6 * 3600_000);
 /** Raw signatures kept beyond the long window; must exceed every live reader. */
 const RETAIN_BLOCKS = Number(process.env.SIGNATURE_RETAIN_BLOCKS ?? DEFAULT_RETAIN_BLOCKS);
+/** How often to refresh validator monikers from the LCD (they rarely change). */
+const MONIKER_SYNC_MS = Number(process.env.MONIKER_SYNC_INTERVAL_MS ?? 3600_000);
 
 loadEnv();
 const { db } = createDb();
@@ -360,6 +363,23 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
     }
   };
   void sweepSignatures();
+
+  /**
+   * Monikers come from the chain's LCD (x/poa), not the CometBFT RPC, so this
+   * runs even while every RPC endpoint is down. Best-effort like retention:
+   * a failed fetch keeps the previous names and the interval retries.
+   */
+  const syncNames = async (): Promise<void> => {
+    if (!cfg.lcd_url) return;
+    try {
+      const updated = await syncMonikers(db, chainId, await fetchMonikers(cfg.lcd_url));
+      if (updated > 0) console.log(`monikers: updated ${updated} validator(s) from LCD`);
+    } catch (e) {
+      console.error("moniker sync failed:", (e as Error).message);
+    }
+  };
+  void syncNames();
+  setInterval(() => void syncNames(), MONIKER_SYNC_MS);
 
   // Probe before choosing, so the first selection is informed rather than
   // defaulting to whatever happens to be first in the config.

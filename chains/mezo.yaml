@@ -17,6 +17,11 @@ family: cometbft
 rpc_url: ${MEZO_RPC_URL}
 ws_url: ${MEZO_RPC_WS_URL}
 
+# Cosmos LCD base URL. Mezo's custom x/poa module serves validator monikers
+# at {lcd_url}/poa/v1/validators — the CometBFT RPC cannot. An unset ${VAR}
+# is skipped and validators stay nameless.
+lcd_url: ${MEZO_LCD_URL}
+
 # Failover list, tried in priority order (lower wins). The indexer probes each
 # on an interval and switches automatically when the active one degrades; a
 # node pinned from the dashboard overrides that until unpinned.
