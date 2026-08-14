@@ -46,8 +46,13 @@ export function Validators({
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return d.validators.filter((v) => {
-      // Search matches the consensus address and any local label.
-      if (q && !v.address.toLowerCase().includes(q) && !(v.label ?? "").toLowerCase().includes(q))
+      // Search matches the consensus address, moniker and any local label.
+      if (
+        q &&
+        !v.address.toLowerCase().includes(q) &&
+        !(v.label ?? "").toLowerCase().includes(q) &&
+        !(v.moniker ?? "").toLowerCase().includes(q)
+      )
         return false;
       if (filter === "all") return true;
       if (filter === "degraded") return v.status !== "active";
@@ -62,6 +67,7 @@ export function Validators({
     const header = [
       "rank",
       "address",
+      "moniker",
       "label",
       "watched",
       "status",
@@ -77,6 +83,7 @@ export function Validators({
     const body = rows.map((v) => [
       v.rank,
       v.address,
+      v.moniker ?? "",
       v.label ?? "",
       v.watched ? "yes" : "no",
       v.status,
@@ -249,7 +256,7 @@ export function Validators({
             Showing 1 to {rows.length} of {d.validators.length}
           </span>
           <span style={{ font: `400 10.5px/1 ${mono}`, color: TX3 }}>
-            this chain exposes no monikers · labels are local and editable (click one to rename)
+            monikers synced from the chain's x/poa module · labels are local and editable
           </span>
         </div>
       </section>
@@ -322,7 +329,27 @@ function FullRow({
           <span style={{ font: `500 12.5px/1 ${mono}`, color: selected ? TX : TX2, whiteSpace: "nowrap" }}>
             {short(v.address)}
           </span>
-          <LabelEditor label={v.label} onLabel={onLabel} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+            {v.moniker && (
+              <span
+                title={`moniker (chain): ${v.moniker}`}
+                style={{
+                  font: `400 10px/1 ${sans}`,
+                  color: TX2,
+                  padding: "3px 7px",
+                  borderRadius: 5,
+                  background: "var(--panel2)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  maxWidth: 120,
+                }}
+              >
+                {v.moniker}
+              </span>
+            )}
+            <LabelEditor label={v.label} onLabel={onLabel} />
+          </div>
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 9, paddingRight: 20 }}>

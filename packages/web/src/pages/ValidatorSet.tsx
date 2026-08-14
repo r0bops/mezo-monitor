@@ -98,8 +98,9 @@ export function ValidatorSet({ d }: { d: Dashboard }) {
                 <span style={{ font: `500 12px/1 ${mono}`, color: TX2, whiteSpace: "nowrap" }}>
                   {short(m.address)}
                 </span>
-                {m.label && (
+                {(m.moniker || m.label) && (
                   <span
+                    title={m.moniker ? `moniker: ${m.moniker}` : "local label"}
                     style={{
                       font: `400 10px/1 ${sans}`,
                       color: TX2,
@@ -110,7 +111,7 @@ export function ValidatorSet({ d }: { d: Dashboard }) {
                     }}
                   >
                     {m.watched ? "★ " : ""}
-                    {m.label}
+                    {m.moniker ?? m.label}
                   </span>
                 )}
               </div>
