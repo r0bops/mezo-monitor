@@ -33,6 +33,88 @@ export async function getChain(pool: pg.Pool, slug?: string): Promise<ChainRow |
   return r.rows[0] ?? null;
 }
 
+export type EndpointRow = {
+  id: number;
+  label: string;
+  rpc_url: string;
+  ws_url: string | null;
+  priority: number;
+  is_active: boolean;
+  pinned: boolean;
+  healthy: boolean;
+  last_height: number | null;
+  latency_ms: number | null;
+  last_ok_at: Date | null;
+  last_error: string | null;
+  consecutive_failures: number;
+};
+
+export async function listEndpoints(pool: pg.Pool, chainId: number): Promise<EndpointRow[]> {
+  const r = await pool.query<EndpointRow>(
+    `select id, label, rpc_url, ws_url, priority, is_active, pinned, healthy,
+            last_height, latency_ms, last_ok_at, last_error, consecutive_failures
+     from chain_endpoints where chain_id = $1
+     order by priority, id`,
+    [chainId],
+  );
+  return r.rows;
+}
+
+/**
+ * Pin or unpin an endpoint. Pinning also makes it active immediately so the UI
+ * reflects the choice without waiting for the indexer's next probe; the indexer
+ * converges on the same row from `pinned`.
+ */
+export async function setEndpointPinned(
+  pool: pg.Pool,
+  chainId: number,
+  id: number,
+  pinned: boolean,
+): Promise<EndpointRow | null> {
+  const owned = await pool.query<{ id: number }>(
+    `select id from chain_endpoints where chain_id = $1 and id = $2`,
+    [chainId, id],
+  );
+  if (owned.rowCount === 0) return null;
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    // At most one pin per chain, and the partial unique index allows only one
+    // active row — clear both before setting.
+    await client.query(`update chain_endpoints set pinned = false where chain_id = $1`, [chainId]);
+    if (pinned) {
+      await client.query(
+        `update chain_endpoints set is_active = false where chain_id = $1 and is_active`,
+        [chainId],
+      );
+      await client.query(
+        `update chain_endpoints set pinned = true, is_active = true, updated_at = now() where id = $1`,
+        [id],
+      );
+      await client.query(
+        `update chains c set rpc_url = e.rpc_url, ws_url = e.ws_url, updated_at = now()
+         from chain_endpoints e where e.id = $1 and c.id = $2`,
+        [id, chainId],
+      );
+    }
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  const r = await pool.query<EndpointRow>(
+    `select id, label, rpc_url, ws_url, priority, is_active, pinned, healthy,
+            last_height, latency_ms, last_ok_at, last_error, consecutive_failures
+     from chain_endpoints where id = $1`,
+    [id],
+  );
+  return r.rows[0] ?? null;
+}
+
 export type NetworkRow = {
   latest_indexed_height: number | null;
   earliest_indexed_height: number | null;

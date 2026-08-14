@@ -13,12 +13,14 @@ import {
   blocksPerHour,
   getChain,
   isBootstrapSet,
+  listEndpoints,
   metricStats,
   networkSummary,
   proposedTotal,
   recentBlockSigning,
   seriesBuckets,
   setChanges,
+  setEndpointPinned,
   signingSlots,
   validatorMetrics,
   type ChainRow,
@@ -30,6 +32,8 @@ import { deliverPending } from "./delivery.js";
 
 /** Lag beyond which the indexer is considered stalled rather than merely behind. */
 const STALL_LAG_BLOCKS = 50;
+/** Blocks' worth of silence before the indexer counts as stalled on time alone. */
+const STALL_BLOCK_MULTIPLE = 20;
 /** Just under block cadence: a cached read is at most one block stale. */
 const DERIVED_TTL_MS = 3_000;
 
@@ -128,12 +132,14 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     const chain = requireChain(reply);
     if (!chain) return;
     try {
-      const [n, bootstrap, changes, recent] = await Promise.all([
+      const [n, bootstrap, changes, recent, endpoints] = await Promise.all([
         networkSummary(pool, chain.id),
         isBootstrapSet(pool, chain.id),
         setChanges(pool, chain.id, 1),
         recentBlockSigning(pool, chain.id, 100),
+        listEndpoints(pool, chain.id),
       ]);
+      const active = endpoints.find((e) => e.is_active) ?? null;
 
       const headState = head.current;
       const headHeight = head.isFresh ? headState.height : null;
@@ -145,10 +151,25 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       const longFilled = Math.min(n.blocks_in_long_window, LONG_WINDOW);
       const longComplete = longFilled >= LONG_WINDOW;
 
+      /**
+       * Staleness fallback for when the chain head is unknown.
+       *
+       * Lag needs a reachable RPC, but an unreachable RPC is exactly when
+       * indexing has stopped — relying on lag alone reports "normal" while
+       * nothing is being ingested. Time since the last indexed block needs no
+       * RPC, so it catches that case.
+       */
+      const blockTimeS = n.avg_block_time_ms !== null ? n.avg_block_time_ms / 1000 : 5;
+      const staleAfterMs = Math.max(60_000, blockTimeS * STALL_BLOCK_MULTIPLE * 1000);
+      const sinceLastBlockMs = n.last_block_time
+        ? Date.now() - new Date(n.last_block_time).getTime()
+        : null;
+      const stale = sinceLastBlockMs !== null && sinceLastBlockMs > staleAfterMs;
+
       const status =
         n.blocks_indexed === 0
           ? "empty"
-          : lag !== null && lag > STALL_LAG_BLOCKS
+          : (lag !== null && lag > STALL_LAG_BLOCKS) || stale
             ? "stopped"
             : !longComplete
               ? "backfill"
@@ -179,6 +200,16 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         head_error: headState.error,
         long_window: { target: LONG_WINDOW, filled: longFilled, complete: longComplete },
         vset_bootstrap: bootstrap,
+        active_endpoint: active
+          ? {
+              id: active.id,
+              label: active.label,
+              healthy: active.healthy,
+              latency_ms: active.latency_ms,
+              last_height: active.last_height,
+              pinned: active.pinned,
+            }
+          : null,
         recent_signing: recent.map((b) => ({
           height: b.height,
           signed: b.signature_count,
@@ -369,6 +400,44 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         return { error: "rule not found", id };
       }
       return rule;
+    },
+  );
+
+  app.get("/api/v1/endpoints", async (_req, reply) => {
+    const chain = requireChain(reply);
+    if (!chain) return;
+    const rows = await listEndpoints(pool, chain.id);
+    return {
+      count: rows.length,
+      endpoints: rows.map((e) => ({
+        ...e,
+        // A node URL can carry credentials; never hand them back.
+        rpc_url: redactUrl(e.rpc_url),
+        ws_url: redactUrl(e.ws_url),
+      })),
+    };
+  });
+
+  app.patch<{ Params: { id: string }; Body: { pinned?: boolean } }>(
+    "/api/v1/endpoints/:id",
+    async (req, reply) => {
+      const chain = requireChain(reply);
+      if (!chain) return;
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) {
+        reply.code(400);
+        return { error: "id must be an integer" };
+      }
+      if (typeof req.body?.pinned !== "boolean") {
+        reply.code(400);
+        return { error: "body must be { pinned: boolean }" };
+      }
+      const row = await setEndpointPinned(pool, chain.id, id, req.body.pinned);
+      if (!row) {
+        reply.code(404);
+        return { error: "endpoint not found for this chain", id };
+      }
+      return { ...row, rpc_url: redactUrl(row.rpc_url), ws_url: redactUrl(row.ws_url) };
     },
   );
 
