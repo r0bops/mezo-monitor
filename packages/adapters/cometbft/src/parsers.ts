@@ -10,9 +10,16 @@ const PubKey = z.object({ type: z.string(), value: z.string() });
 
 const Signature = z.object({
   block_id_flag: z.number().optional(), // 1=Absent, 2=Commit (signed), 3=Nil (missed)
-  validator_address: z.string().optional(),
-  timestamp: z.string().optional(),
-  signature: z.string().optional(),
+  /**
+   * Absent-commit entries carry explicit nulls, not omitted keys — CometBFT
+   * keeps every set member in the array and marks non-signers with
+   * signature: null (flag 1/3). `nullish` rather than `optional`: an explicit
+   * null is not an absent key. Rejecting it stalled ingestion for hours the
+   * first time a validator missed a block.
+   */
+  validator_address: z.string().nullish(),
+  timestamp: z.string().nullish(),
+  signature: z.string().nullish(),
 });
 
 export const StatusResponse = z.object({
