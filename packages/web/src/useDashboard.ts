@@ -7,7 +7,6 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  getAlerts,
   getConfig,
   getMetrics,
   getNetwork,
@@ -17,7 +16,6 @@ import {
   getValidatorSet,
   getValidators,
   updateValidatorIdentity,
-  type Alerts,
   type Config,
   type EndpointList,
   type Metrics,
@@ -51,7 +49,6 @@ export type Dashboard = {
   set: ValidatorSet | null;
   metrics: Metrics | null;
   series: Series | null;
-  alerts: Alerts | null;
   config: Config | null;
   endpoints: EndpointList | null;
   detail: ValidatorDetail | null;
@@ -63,7 +60,6 @@ export type Dashboard = {
   /** Seconds since the last successful poll — drives the "Updated Ns ago". */
   agoSeconds: number;
   refresh: () => void;
-  setAlerts: (a: Alerts) => void;
   setEndpoints: (e: EndpointList) => void;
   /** Optimistically apply a local identity edit (label / watched). */
   patchValidator: (address: string, patch: { label?: string | null; watched?: boolean }) => void;
@@ -84,7 +80,6 @@ export function useDashboard(opts: {
   const [set, setSet] = useState<ValidatorSet | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [series, setSeries] = useState<Series | null>(null);
-  const [alerts, setAlerts] = useState<Alerts | null>(null);
   const [endpoints, setEndpoints] = useState<EndpointList | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
   const [detail, setDetail] = useState<ValidatorDetail | null>(null);
@@ -150,14 +145,12 @@ export function useDashboard(opts: {
       const results = await Promise.allSettled([
         getValidatorSet(),
         getMetrics(metricsHours),
-        getAlerts(),
         getEndpoints(),
       ]);
       if (cancelled) return;
       if (results[0].status === "fulfilled") setSet(results[0].value);
       if (results[1].status === "fulfilled") setMetrics(results[1].value);
-      if (results[2].status === "fulfilled") setAlerts(results[2].value);
-      if (results[3].status === "fulfilled") setEndpoints(results[3].value);
+      if (results[2].status === "fulfilled") setEndpoints(results[2].value);
     };
     void run();
     if (!live) return () => { cancelled = true; };
@@ -212,7 +205,6 @@ export function useDashboard(opts: {
     set,
     metrics,
     series,
-    alerts,
     config,
     endpoints,
     detail,
@@ -222,7 +214,6 @@ export function useDashboard(opts: {
     lastUpdated,
     agoSeconds,
     refresh,
-    setAlerts,
     setEndpoints,
     patchValidator,
   };

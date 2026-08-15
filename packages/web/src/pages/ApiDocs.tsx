@@ -102,27 +102,6 @@ const ENDPOINTS: Endpoint[] = [
   },
   {
     method: "GET",
-    path: "/api/v1/alerts",
-    desc: "Alert rules and the event feed. Events are edge-triggered: opened when a condition starts holding, resolved when it clears.",
-    sample: [
-      "{",
-      '  "rules": [',
-      '    { "id": 1, "name": "Missed streak", "metric": "missed_streak", "threshold": 5, "enabled": true }',
-      "  ],",
-      '  "events": [',
-      '    { "severity": "warning", "title": "Validator uptime", "resolved_at": null }',
-      "  ]",
-      "}",
-    ],
-  },
-  {
-    method: "PATCH",
-    path: "/api/v1/alerts/rules/:id",
-    desc: "Enable or disable a rule. Body: { enabled: boolean }.",
-    sample: ["{", '  "id": 1,', '  "name": "Missed streak",', '  "enabled": false', "}"],
-  },
-  {
-    method: "GET",
     path: "/api/v1/config",
     desc: "Chain identity, capability flags and indexer settings. RPC credentials are redacted.",
     sample: [

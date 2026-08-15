@@ -9,8 +9,7 @@ import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import { createDb, loadEnv } from "@mezo/core";
 import { ChainHead } from "./chain-head.js";
-import { getChain, registerRoutes, runEvaluation, type Deps } from "./routes.js";
-import { seedRules } from "./alerts.js";
+import { getChain, registerRoutes, type Deps } from "./routes.js";
 import type { ChainRow } from "./queries.js";
 
 loadEnv();
@@ -23,7 +22,6 @@ const PORT = Number(process.env.API_PORT ?? 3000);
  */
 const HOST = process.env.API_HOST ?? "127.0.0.1";
 const CHAIN_REFRESH_MS = 30_000;
-const EVAL_INTERVAL_MS = 30_000;
 
 const { pool } = createDb();
 const fastify = Fastify({ logger: true });
@@ -49,9 +47,6 @@ async function refreshChain(): Promise<void> {
       head?.stop();
       head = new ChainHead(next.rpc_url);
       head.start();
-      await seedRules(pool, next.id).catch((e) =>
-        fastify.log.warn({ err: e }, "could not seed alert rules"),
-      );
       fastify.log.info({ chain: next.slug, chainId: next.chain_id }, "chain resolved");
     }
   } catch (e) {
@@ -68,13 +63,6 @@ registerRoutes(fastify, deps);
 
 const chainTimer = setInterval(() => void refreshChain(), CHAIN_REFRESH_MS);
 chainTimer.unref();
-
-const evalTimer = setInterval(() => {
-  void runEvaluation({ ...deps, head: head! }).catch((e) =>
-    fastify.log.warn({ err: e }, "alert evaluation failed"),
-  );
-}, EVAL_INTERVAL_MS);
-evalTimer.unref();
 
 // Dashboard (built SPA) + client-side routing fallback
 if (existsSync(webDist)) {
@@ -95,7 +83,7 @@ if (existsSync(webDist)) {
 const shutdown = async (sig: string) => {
   fastify.log.info({ sig }, "shutting down");
   clearInterval(chainTimer);
-  clearInterval(evalTimer);
+
   head?.stop();
   try {
     await fastify.close();

@@ -28,9 +28,7 @@ import {
   type ChainRow,
   type ValidatorRow,
 } from "./queries.js";
-import { evaluate, listEvents, listRules, setRuleEnabled, setRuleWebhook } from "./alerts.js";
 import { CacheMap } from "./cache.js";
-import { deliverPending } from "./delivery.js";
 
 /** Lag beyond which the indexer is considered stalled rather than merely behind. */
 const STALL_LAG_BLOCKS = 50;
@@ -156,9 +154,11 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       const longComplete = longFilled >= LONG_WINDOW;
 
       /**
-       * Staleness fallback for when the chain head is unknown — shared with the
-       * indexer_stale alert rule (see indexerStall) so the status field and the
-       * page can never disagree about whether the indexer is stalled.
+       * Staleness fallback for when the chain head is unknown: lag needs a
+       * reachable RPC, but an unreachable RPC is exactly when indexing has
+       * stopped — relying on lag alone reports "normal" while nothing is being
+       * ingested. Time since the last indexed block needs no RPC, so it catches
+       * that case.
        */
       const stale = indexerStall(n).stale;
 
@@ -385,56 +385,6 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     },
   );
 
-  app.get("/api/v1/alerts", async (_req, reply) => {
-    const chain = requireChain(reply);
-    if (!chain) return;
-    const [rules, events] = await Promise.all([
-      listRules(pool, chain.id),
-      listEvents(pool, chain.id, 50),
-    ]);
-    return { rules, events };
-  });
-
-  app.patch<{ Params: { id: string }; Body: { enabled?: boolean; webhook_url?: string | null } }>(
-    "/api/v1/alerts/rules/:id",
-    async (req, reply) => {
-      const chain = requireChain(reply);
-      if (!chain) return;
-      const id = Number(req.params.id);
-      if (!Number.isInteger(id)) {
-        reply.code(400);
-        return { error: "id must be an integer" };
-      }
-
-      const { enabled, webhook_url: webhookUrl } = req.body ?? {};
-      if (enabled === undefined && webhookUrl === undefined) {
-        reply.code(400);
-        return { error: "body must include { enabled: boolean } and/or { webhook_url: string|null }" };
-      }
-
-      let rule = null;
-      if (webhookUrl !== undefined) {
-        if (webhookUrl !== null && !/^https?:\/\//i.test(webhookUrl)) {
-          reply.code(400);
-          return { error: "webhook_url must be an http(s) URL or null" };
-        }
-        rule = await setRuleWebhook(pool, chain.id, id, webhookUrl);
-      }
-      if (enabled !== undefined) {
-        if (typeof enabled !== "boolean") {
-          reply.code(400);
-          return { error: "enabled must be a boolean" };
-        }
-        rule = await setRuleEnabled(pool, chain.id, id, enabled);
-      }
-      if (!rule) {
-        reply.code(404);
-        return { error: "rule not found", id };
-      }
-      return rule;
-    },
-  );
-
   app.get("/api/v1/endpoints", async (_req, reply) => {
     const chain = requireChain(reply);
     if (!chain) return;
@@ -513,44 +463,6 @@ function redactUrl(raw: string | null): string | null {
   } catch {
     return raw;
   }
-}
-
-/** Periodic rule evaluation plus webhook delivery, driven from the bootstrap. */
-export async function runEvaluation(deps: Deps): Promise<{ sent: number; failed: number } | void> {
-  const chain = deps.chain();
-  if (!chain) return;
-  // Reuse the route caches when available so evaluation is free if a request
-  // just populated them; fall back to a direct query when running standalone.
-  const [rows, n] = await Promise.all([
-    deps.derived?.metrics.get(chain.id) ?? validatorMetrics(deps.pool, chain.id),
-    networkSummary(deps.pool, chain.id),
-  ]);
-  const headState = deps.head.current;
-  const headHeight = deps.head.isFresh ? headState.height : null;
-  const lag =
-    headHeight !== null && n.latest_indexed_height !== null
-      ? Math.max(0, headHeight - n.latest_indexed_height)
-      : null;
-
-  // The RPC-free signals: these stay knowable precisely when `lag` goes null,
-  // which is what lets alerting survive the data source disappearing.
-  const stall = indexerStall(n);
-  const endpoints = await listEndpoints(deps.pool, chain.id);
-  const healthyEndpoints = endpoints.filter((e) => e.healthy).length;
-
-  await evaluate(deps.pool, {
-    chainId: chain.id,
-    validators: rows,
-    indexerLag: lag,
-    avgBlockTimeS: n.avg_block_time_ms !== null ? n.avg_block_time_ms / 1000 : null,
-    indexerStaleS: stall.sinceLastBlockS,
-    staleAfterS: stall.staleAfterS,
-    healthyEndpoints,
-    height: n.latest_indexed_height,
-  });
-
-  // Delivery is a separate pass: a dead webhook must never stall evaluation.
-  return deliverPending(deps.pool, chain.id, chain.chain_id);
 }
 
 export { getChain };

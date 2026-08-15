@@ -136,8 +136,7 @@ export type StallInfo = {
  * Lag needs a reachable RPC, but an unreachable RPC is exactly when indexing
  * has stopped — relying on lag alone reports "normal" while nothing is being
  * ingested. Time since the last indexed block needs no RPC, so it catches that
- * case. Shared by the /network status field and the indexer_stale alert rule
- * so the two can never disagree.
+ * case.
  */
 export function indexerStall(
   n: Pick<NetworkRow, "last_block_time" | "avg_block_time_ms">,

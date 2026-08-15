@@ -63,8 +63,6 @@ backfill and the gap scanner, so blocks missed while it was down are repaired.
 - `GET /api/v1/metrics?hours=24|168|720` — aggregates, bucketed series, per-hour (24h) or
   per-day (7d/30d) block volume, proposer distribution
 - `GET /api/v1/series?minutes=&buckets=` — block time / signing rate / block count over a window
-- `GET /api/v1/alerts` — rules + event feed · `PATCH /api/v1/alerts/rules/:id` —
-  `{ enabled }` and/or `{ webhook_url }`
 - `GET /api/v1/endpoints` — endpoint health · `PATCH /api/v1/endpoints/:id` — `{ pinned }`
 - `GET /api/v1/config` — chain identity, capabilities, indexer settings (RPC credentials redacted)
 
@@ -79,7 +77,7 @@ pnpm --filter @mezo/web build   # writes packages/web/dist, served by the API
 pnpm --filter @mezo/web dev     # or: Vite dev server on :5173, proxying /api to :3000
 ```
 
-Pages: Overview, Validators, Validator Set, Metrics, Alerts, API & Docs, Settings. Dark and light
+Pages: Overview, Validators, Validator Set, Metrics, API & Docs, Settings. Dark and light
 themes. Append `?debug` to the URL for the state switcher, which forces each loading/empty/stalled
 /backfill state for visual checking (it is otherwise dev-only).
 
@@ -113,37 +111,6 @@ flag is kept, so control returns once it recovers.
 
 Switching the endpoint changes where **new** blocks are read from. Unlike polkadot.js, where the
 browser holds the connection, the indexer holds it here — history already in Postgres is unaffected.
-
-## Alerting
-Rules live in `alert_rules` and are evaluated every 30s by the API against the same derived metrics
-it serves — no separate ingestion path. Events are edge-triggered: opened when a condition starts
-holding, resolved when it clears. The default rules (missed streak, uptime, indexer lag, block time,
-validator-set change) are seeded on first start; the set-change rule ships disabled so a genesis
-bootstrap doesn't emit one event per validator.
-
-Two of the defaults exist because the RPC-dependent metrics go silent exactly when they matter:
-
-- **Indexer stale** (`indexer_stale`) — seconds since the newest indexed block, derived from the
-  database alone. Indexer *lag* needs a reachable RPC to know the chain head; when the RPC is
-  unreachable, lag is null and the lag rule is skipped. Staleness still knows the truth, so a dead
-  data source produces an event instead of silence. The threshold is the larger of the stored value
-  and the block-time-derived stall threshold (the same heuristic as the dashboard's "stopped"
-  status — they share one function).
-- **No healthy endpoint** (`healthy_endpoints`) — no endpoint row with `healthy = true`, which
-  distinguishes "a node died and we failed over cleanly" (no event) from "nowhere left to go".
-
-Set a rule's `webhook_url` to receive deliveries — a plain JSON POST carrying a `text` summary plus
-structured fields, which Slack, Discord and PagerDuty incoming webhooks all accept:
-
-```bash
-curl -X PATCH "$API/api/v1/alerts/rules/3" -H 'content-type: application/json' \
-  -d '{"webhook_url":"https://hooks.slack.com/services/..."}'
-```
-
-Delivery runs as a pass separate from evaluation, so a dead endpoint can never stall alerting.
-Each event notifies once when it fires and again when it clears, with bounded retries and the last
-error recorded and shown on the Alerts page. With no webhook set, rules are dashboard-only — events
-are recorded, nothing is sent.
 
 ## Validator identity
 CometBFT `/validators` exposes no names, but Mezo's custom `x/poa` module does: the indexer fetches

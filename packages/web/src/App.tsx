@@ -8,7 +8,6 @@ import { Overview, verdictFor } from "./pages/Overview";
 import { Validators } from "./pages/Validators";
 import { ValidatorSet } from "./pages/ValidatorSet";
 import { Metrics } from "./pages/Metrics";
-import { Alerts } from "./pages/Alerts";
 import { ApiDocs } from "./pages/ApiDocs";
 import { Settings } from "./pages/Settings";
 import { Components } from "./pages/Components";
@@ -23,7 +22,6 @@ type PageId =
   | "validators"
   | "vset"
   | "metrics"
-  | "alerts"
   | "api"
   | "settings"
   | "components";
@@ -33,7 +31,6 @@ const NAV: { id: PageId; label: string; d: string }[] = [
   { id: "validators", label: "Validators", d: "M4 6h12M4 10h12M4 14h12" },
   { id: "vset", label: "Validator Set", d: "M10 3l6 3.5v7L10 17l-6-3.5v-7z" },
   { id: "metrics", label: "Metrics", d: "M4 15l4-5 3 3 5-7" },
-  { id: "alerts", label: "Alerts", d: "M10 4a4 4 0 00-4 4v3l-2 3h12l-2-3V8a4 4 0 00-4-4zM8.6 17h2.8" },
   { id: "api", label: "API & Docs", d: "M7 6l-3 4 3 4M13 6l3 4-3 4" },
   {
     id: "settings",
@@ -47,7 +44,6 @@ const TITLES: Record<PageId, string> = {
   validators: "Validators",
   vset: "Validator Set",
   metrics: "Metrics",
-  alerts: "Alerts",
   api: "API & Docs",
   settings: "Settings",
   components: "Components",
@@ -290,7 +286,6 @@ export default function App() {
           {page === "validators" && <Validators d={d} selected={selected} onSelect={setSelected} />}
           {page === "vset" && <ValidatorSet d={d} />}
           {page === "metrics" && <Metrics d={d} hours={metricsHours} onHours={setMetricsHours} />}
-          {page === "alerts" && <Alerts d={d} />}
           {page === "api" && <ApiDocs d={d} />}
           {page === "settings" && <Settings d={d} theme={theme} onTheme={setTheme} />}
           {page === "components" && <Components />}

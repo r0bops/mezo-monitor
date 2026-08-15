@@ -137,36 +137,6 @@ export type Metrics = {
 
 export type Series = { minutes: number; points: SeriesPoint[] };
 
-export type AlertRule = {
-  id: number;
-  name: string;
-  metric: string;
-  comparator: string;
-  threshold: number;
-  severity: string;
-  channel: string | null;
-  webhook_url: string | null;
-  enabled: boolean;
-};
-
-export type AlertEvent = {
-  id: number;
-  rule_id: number | null;
-  severity: string;
-  title: string;
-  body: string;
-  subject: string | null;
-  height: number | null;
-  fired_at: string;
-  resolved_at: string | null;
-  delivered_at: string | null;
-  resolved_delivered_at: string | null;
-  delivery_attempts: number;
-  delivery_error: string | null;
-};
-
-export type Alerts = { rules: AlertRule[]; events: AlertEvent[] };
-
 export type Endpoint = {
   id: number;
   label: string;
@@ -234,7 +204,6 @@ export const getValidators = () => get<ValidatorList>("/api/v1/validators");
 export const getValidatorSet = () => get<ValidatorSet>("/api/v1/validator-set");
 export const getMetrics = (hours: number = 24) => get<Metrics>(`/api/v1/metrics?hours=${hours}`);
 export const getConfig = () => get<Config>("/api/v1/config");
-export const getAlerts = () => get<Alerts>("/api/v1/alerts");
 export const getEndpoints = () => get<EndpointList>("/api/v1/endpoints");
 
 /** Pin an endpoint (forcing it active) or release it back to auto-selection. */
@@ -268,12 +237,3 @@ export async function updateValidatorIdentity(
 export const getSeries = (minutes: number, buckets: number) =>
   get<Series>(`/api/v1/series?minutes=${minutes}&buckets=${buckets}`);
 
-export async function setAlertRuleEnabled(id: number, enabled: boolean): Promise<AlertRule> {
-  const r = await fetch(`/api/v1/alerts/rules/${id}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ enabled }),
-  });
-  if (!r.ok) throw new ApiError(`rule update failed (${r.status})`, r.status);
-  return r.json() as Promise<AlertRule>;
-}

@@ -2,7 +2,7 @@
  * Short-lived read-through cache for the expensive derived queries.
  *
  * `validatorMetrics` scans the whole signing window and costs ~0.5s; four routes
- * plus the alert evaluator all need it, and the dashboard asks for several of
+ * all need it, and the dashboard asks for several of
  * them at once. Without coalescing, one refresh cycle runs the same scan five
  * times concurrently.
  *
