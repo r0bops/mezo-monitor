@@ -17,6 +17,24 @@ let throttledUntil = 0;
 export const isThrottled = (): boolean => Date.now() < throttledUntil;
 const THROTTLE_COOLDOWN_MS = 30_000;
 
+/**
+ * Strip userinfo before a URL goes into an Error (and from there into logs):
+ * node URLs may legitimately carry credentials, and every thrown message in
+ * this client embeds the URL it failed on.
+ */
+function redact(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.username || u.password) {
+      u.username = "";
+      u.password = "";
+    }
+    return u.toString();
+  } catch {
+    return url.replace(/\/\/[^/@:]+:[^/@]+@/, "//").replace(/\/\/[^/@]+@/, "//");
+  }
+}
+
 export class CometbftRpc {
   /** Live subscription, retained so an endpoint switch can rebuild it. */
   private subscription: { close: () => void } | null = null;
@@ -90,7 +108,7 @@ export class CometbftRpc {
       const res = await fetch(url, { headers: { accept: "application/json" } });
       if (res.ok) {
         const json: any = await res.json();
-        if (json?.error) throw new Error(`RPC error ${url}: ${JSON.stringify(json.error)}`);
+        if (json?.error) throw new Error(`RPC error ${redact(url)}: ${JSON.stringify(json.error)}`);
         return json;
       }
       if (res.status === 429 && attempt < 4) {
@@ -104,7 +122,7 @@ export class CometbftRpc {
         continue;
       }
       if (res.status === 429) throttledUntil = Date.now() + THROTTLE_COOLDOWN_MS;
-      throw new Error(`HTTP ${res.status} ${url}`);
+      throw new Error(`HTTP ${res.status} ${redact(url)}`);
     }
   }
 

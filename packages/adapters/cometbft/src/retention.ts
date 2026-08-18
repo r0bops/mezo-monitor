@@ -58,27 +58,42 @@ export async function runRetentionSweep(
     );
     const watermark = Number(wm.rows[0]?.last_height ?? 0);
 
-    // Rows at or below the watermark were already counted (or re-inserted by a
-    // gap repair): drop them without aggregating.
-    const delBelow = await tx.execute(
-      sql`delete from block_signatures where chain_id = ${chainId} and height <= ${watermark}`,
-    );
-
-    await tx.execute(sql`
-      insert into validator_signing_daily (chain_id, day, validator_address, slots, signed)
-      select chain_id, date_trunc('day', time), validator_address,
-             count(*)::int, count(*) filter (where signed)::int
-      from block_signatures
-      where chain_id = ${chainId} and height > ${watermark} and height <= ${cutoff}
-      group by 1, 2, 3
-      on conflict (chain_id, day, validator_address) do update
-        set slots = validator_signing_daily.slots + excluded.slots,
-            signed = validator_signing_daily.signed + excluded.signed
+    /**
+     * One statement for the whole sweep, so the rows counted into the daily
+     * aggregate are exactly the rows the DELETE removes — an aggregate SELECT
+     * and a separate DELETE could see different snapshots, and a gap repair
+     * inserting into that window would have its signatures deleted uncounted.
+     *
+     * `counted` deletes (watermark, cutoff] and feeds the aggregate insert
+     * from its own RETURNING. `swept` deletes rows at or below the watermark
+     * un-counted: they were already rolled up on an earlier sweep (or were
+     * re-inserted by a gap repair, where re-counting would double-add). The
+     * two ranges are disjoint, and the whole statement (like the watermark
+     * update after it) shares the transaction's snapshot.
+     */
+    const r = await tx.execute<{ counted_n: number; swept_n: number }>(sql`
+      with counted as (
+        delete from block_signatures
+        where chain_id = ${chainId} and height > ${watermark} and height <= ${cutoff}
+        returning date_trunc('day', time) as day, validator_address, signed
+      ),
+      ins as (
+        insert into validator_signing_daily (chain_id, day, validator_address, slots, signed)
+        select ${chainId}, day, validator_address,
+               count(*)::int, count(*) filter (where signed)::int
+        from counted
+        group by day, validator_address
+        on conflict (chain_id, day, validator_address) do update
+          set slots = validator_signing_daily.slots + excluded.slots,
+              signed = validator_signing_daily.signed + excluded.signed
+      ),
+      swept as (
+        delete from block_signatures where chain_id = ${chainId} and height <= ${watermark}
+        returning 1
+      )
+      select (select count(*)::int from counted) as counted_n,
+             (select count(*)::int from swept) as swept_n
     `);
-
-    const del = await tx.execute(
-      sql`delete from block_signatures where chain_id = ${chainId} and height <= ${cutoff}`,
-    );
 
     await tx.execute(sql`
       insert into signature_retention (chain_id, last_height)
@@ -87,6 +102,7 @@ export async function runRetentionSweep(
         set last_height = excluded.last_height, updated_at = now()
     `);
 
-    return { cutoff, deleted: (delBelow.rowCount ?? 0) + (del.rowCount ?? 0) };
+    const n = r.rows[0];
+    return { cutoff, deleted: Number(n?.counted_n ?? 0) + Number(n?.swept_n ?? 0) };
   });
 }

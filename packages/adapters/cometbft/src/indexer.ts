@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import {
   blockSignatures,
   blocks,
@@ -69,43 +69,52 @@ async function upsertChain(cfg: ChainConfig): Promise<number> {
 }
 
 /** Persist a /block response (idempotent): the block row + per-validator commit signatures. */
+/**
+ * Persist a /block response (idempotent): the block row, its commit signatures
+ * and the chain cursor — atomically. Every repair path keys on the *blocks*
+ * table alone, so a block row committed without its signatures would look
+ * complete forever and its signing record would be lost; one transaction
+ * closes that window.
+ */
 async function persistBlock(chainId: number, raw: unknown): Promise<{ height: number; signed: number; total: number }> {
   const p = parseBlock(raw);
-  await db
-    .insert(blocks)
-    .values({
-      chainId,
-      height: p.height,
-      hash: p.hash,
-      time: new Date(p.time),
-      proposerAddress: p.proposerAddress,
-      txCount: p.txCount,
-      validatorCount: p.validatorCount,
-      signatureCount: p.signatureCount,
-    })
-    .onConflictDoNothing({ target: [blocks.chainId, blocks.height] });
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(blocks)
+      .values({
+        chainId,
+        height: p.height,
+        hash: p.hash,
+        time: new Date(p.time),
+        proposerAddress: p.proposerAddress,
+        txCount: p.txCount,
+        validatorCount: p.validatorCount,
+        signatureCount: p.signatureCount,
+      })
+      .onConflictDoNothing({ target: [blocks.chainId, blocks.height] });
 
-  if (p.signatures.length) {
-    await db
-      .insert(blockSignatures)
-      .values(
-        p.signatures.map((s) => ({
-          chainId,
-          height: p.commitHeight,
-          validatorAddress: s.validator_address,
-          signed: s.signed,
-          time: new Date(p.time),
-        })),
-      )
-      .onConflictDoNothing({
-        target: [blockSignatures.chainId, blockSignatures.height, blockSignatures.validatorAddress],
-      });
-  }
+    if (p.signatures.length) {
+      await tx
+        .insert(blockSignatures)
+        .values(
+          p.signatures.map((s) => ({
+            chainId,
+            height: p.commitHeight,
+            validatorAddress: s.validator_address,
+            signed: s.signed,
+            time: new Date(p.time),
+          })),
+        )
+        .onConflictDoNothing({
+          target: [blockSignatures.chainId, blockSignatures.height, blockSignatures.validatorAddress],
+        });
+    }
 
-  await db
-    .update(chains)
-    .set({ latestIndexedHeight: p.height, updatedAt: new Date() })
-    .where(eq(chains.id, chainId));
+    await tx
+      .update(chains)
+      .set({ latestIndexedHeight: p.height, updatedAt: new Date() })
+      .where(eq(chains.id, chainId));
+  });
 
   return { height: p.height, signed: p.signatureCount, total: p.validatorCount };
 }
@@ -231,7 +240,8 @@ async function runGapScanner(chainId: number, rpc: CometbftRpc): Promise<void> {
  * so a restart re-reads the config but keeps whatever the operator chose.
  */
 async function upsertEndpoints(chainId: number, cfg: ChainConfig): Promise<void> {
-  for (const e of resolveEndpoints(cfg)) {
+  const resolved = resolveEndpoints(cfg);
+  for (const e of resolved) {
     await db
       .insert(chainEndpoints)
       .values({
@@ -246,6 +256,26 @@ async function upsertEndpoints(chainId: number, cfg: ChainConfig): Promise<void>
         set: { label: e.label, wsUrl: e.ws_url || null, priority: e.priority, updatedAt: new Date() },
       });
   }
+
+  /**
+   * The YAML is the source of truth for WHICH endpoints exist, so a URL
+   * removed from it must leave the rotation — otherwise it is probed forever
+   * and can even be selected again after a flap. Runtime state (pinned,
+   * active, health) is only ever upserted, never reset, for the rows that stay.
+   */
+  const stale = await db
+    .delete(chainEndpoints)
+    .where(
+      and(
+        eq(chainEndpoints.chainId, chainId),
+        notInArray(
+          chainEndpoints.rpcUrl,
+          resolved.map((e) => e.rpc_url),
+        ),
+      ),
+    )
+    .returning({ label: chainEndpoints.label });
+  for (const s of stale) console.log(`chain ${cfg.slug}: endpoint "${s.label}" removed from config — deleted`);
 }
 
 async function listEndpoints(chainId: number): Promise<EndpointRow[]> {
@@ -383,7 +413,9 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
     }
   };
   void syncNames();
-  setInterval(() => void syncNames(), MONIKER_SYNC_MS);
+  // The periodic interval is armed only after boot completes: runIndexer can
+  // reject below on an unreachable RPC and be retried every 15s, and an
+  // interval armed here would leak on every failed attempt.
 
   // Probe before choosing, so the first selection is informed rather than
   // defaulting to whatever happens to be first in the config.
@@ -440,6 +472,10 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
     console.error("initial validator sync failed:", (e as Error).message),
   );
   setInterval(() => {
+    // Gated like the drain poll: on a hard-rate-limited node this request
+    // would eat the budget the live block fetches need, while the validator
+    // set changes at most once per epoch.
+    if (isThrottled()) return;
     rpc
       .status()
       .then((s: any) => syncValidators(chainId, rpc, Number(s.result.sync_info.latest_block_height)))
@@ -526,6 +562,9 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
 
   // periodic retention sweep (the first ran before RPC access, above)
   setInterval(() => void sweepSignatures(), RETENTION_SWEEP_MS);
+
+  // periodic moniker refresh (the first ran before RPC access, above)
+  setInterval(() => void syncNames(), MONIKER_SYNC_MS);
 
   // backfill: backward from head to depth (archive node ⇒ no pruning boundary)
   void (async () => {
