@@ -137,7 +137,7 @@ export function isHealthy(e: EndpointRow, all: EndpointRow[]): boolean {
 
 /**
  * Being rate-limited is not being unhealthy — the node answers, it just
- * refuses bulk traffic — so it must not trip the no-healthy-endpoint alert.
+ * refuses bulk traffic — so it must not count as an endpoint failure.
  * But among healthy endpoints a throttled one loses to an unthrottled one
  * regardless of priority: a node that 429s every /block is worse than a slower
  * node that serves them.
