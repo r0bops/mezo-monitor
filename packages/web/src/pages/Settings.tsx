@@ -1,6 +1,8 @@
 /** Settings: chain identity, capability flags, indexer config and theme. */
+import { useState } from "react";
 import type { Dashboard } from "../useDashboard";
 import type { Theme } from "../App";
+import { probeNode, type NodeProbe } from "../nodeRpc";
 import { BAD, BRAND, OK, TX, TX2, TX3, WARN, mono, panel, sans } from "../components/ui";
 import { fmt } from "../lib";
 
@@ -15,6 +17,13 @@ export function Settings({
 }) {
   const cfg = d.config;
   const caps = cfg?.capabilities ?? d.net?.chain.capabilities;
+  const [probes, setProbes] = useState<Record<number, NodeProbe | "loading">>({});
+
+  const runProbe = (id: number, url: string | null) => {
+    if (!url) return;
+    setProbes((p) => ({ ...p, [id]: "loading" }));
+    probeNode(url).then((r) => setProbes((p) => ({ ...p, [id]: r })));
+  };
 
   const chainRows: [string, string][] = cfg
     ? [
@@ -115,14 +124,38 @@ export function Settings({
                     ? `${e.last_error} · ${e.consecutive_failures} consecutive failure${e.consecutive_failures === 1 ? "" : "s"}`
                     : `height ${e.last_height ?? "—"} · ${e.latency_ms ?? "—"}ms`}
                 </span>
+                {probes[e.id] !== undefined && (
+                  <ProbeResult p={probes[e.id]} />
+                )}
               </div>
+              <button
+                type="button"
+                onClick={() => runProbe(e.id, e.rpc_url)}
+                disabled={probes[e.id] === "loading"}
+                title="Ask the node directly from this browser, independent of the monitor"
+                style={{
+                  flex: "none",
+                  marginTop: 2,
+                  padding: "5px 9px",
+                  borderRadius: 7,
+                  border: "1px solid var(--line)",
+                  background: "transparent",
+                  color: TX2,
+                  font: `600 10px/1 ${sans}`,
+                  cursor: probes[e.id] === "loading" ? "default" : "pointer",
+                }}
+              >
+                {probes[e.id] === "loading" ? "…" : "Probe"}
+              </button>
             </div>
           ))}
           <div style={{ padding: "10px 16px" }}>
             <span style={{ font: `400 11px/1.5 ${sans}`, color: TX3 }}>
               Endpoints are declared in <code>chains/*.yaml</code>; health and the active choice
               live in the database. The active node feeds the indexer — switching changes where new
-              blocks are read from, not the history already indexed.
+              blocks are read from, not the history already indexed. <strong>Probe</strong> asks
+              the node directly from your browser (polkadot.js-style, no monitor in the middle) —
+              it needs the node's CORS permission, and http nodes are blocked on the https site.
             </span>
           </div>
         </section>
@@ -201,6 +234,26 @@ export function Settings({
         </section>
       </div>
     </div>
+  );
+}
+
+/** One direct-probe outcome, rendered under the endpoint it belongs to. */
+function ProbeResult({ p }: { p: NodeProbe | "loading" }) {
+  if (p === "loading") {
+    return <span style={{ font: `400 10px/1.4 ${mono}`, color: TX3 }}>probing…</span>;
+  }
+  if (p.state === "ok") {
+    return (
+      <span style={{ font: `400 10px/1.4 ${mono}`, color: p.catchingUp ? WARN : OK }}>
+        direct: {p.network} · head {p.latest} · {p.catchingUp ? "catching up" : "in sync"} ·{" "}
+        {p.latencyMs}ms{p.version ? ` · v${p.version}` : ""}
+      </span>
+    );
+  }
+  return (
+    <span style={{ font: `400 10px/1.4 ${mono}`, color: p.state === "blocked" ? WARN : BAD }}>
+      direct: {p.error}
+    </span>
   );
 }
 
