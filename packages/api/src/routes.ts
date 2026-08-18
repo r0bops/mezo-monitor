@@ -37,14 +37,16 @@ const DERIVED_TTL_MS = 3_000;
 
 export type Deps = {
   pool: pg.Pool;
-  head: ChainHead;
+  /**
+   * A thunk, deliberately: the chain row (and with it the polled RPC URL)
+   * changes whenever the indexer fails over or an endpoint is pinned, and the
+   * server replaces the ChainHead then. Capturing the object by value at boot
+   * would freeze every route on a stopped tracker — head/lag null forever
+   * until process restart.
+   */
+  head: () => ChainHead;
   /** Resolved once at boot; null when the indexer has never seeded a chain row. */
   chain: () => ChainRow | null;
-  /** Populated by registerRoutes so the evaluator shares the route caches. */
-  derived?: {
-    metrics: CacheMap<ValidatorRow[]>;
-    proposed: CacheMap<number>;
-  };
 };
 
 type ValidatorView = {
@@ -94,13 +96,12 @@ function viewValidator(v: ValidatorRow, proposedTotalCount: number): ValidatorVi
 }
 
 export function registerRoutes(app: FastifyInstance, deps: Deps): void {
-  const { pool, head } = deps;
+  const { pool } = deps;
 
-  // Shared across routes and the evaluator so one refresh cycle costs a single
-  // scan rather than five.
+  // Shared across the validator, validator-set and metrics routes so one
+  // refresh cycle costs a single scan rather than five.
   const metricsCache = new CacheMap((chainId) => validatorMetrics(pool, chainId), DERIVED_TTL_MS);
   const proposedCache = new CacheMap((chainId) => proposedTotal(pool, chainId), DERIVED_TTL_MS);
-  deps.derived = { metrics: metricsCache, proposed: proposedCache };
 
   /**
    * Any unhandled route failure is almost always the database being
@@ -143,6 +144,7 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       ]);
       const active = endpoints.find((e) => e.is_active) ?? null;
 
+      const head = deps.head();
       const headState = head.current;
       const headHeight = head.isFresh ? headState.height : null;
       const lag =

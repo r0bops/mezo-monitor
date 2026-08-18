@@ -58,7 +58,7 @@ await refreshChain();
 // Placeholder head until a chain resolves, so routes never dereference null.
 head ??= new ChainHead("");
 
-const deps: Deps = { pool, head, chain: () => chainRow };
+const deps: Deps = { pool, head: () => head!, chain: () => chainRow };
 registerRoutes(fastify, deps);
 
 const chainTimer = setInterval(() => void refreshChain(), CHAIN_REFRESH_MS);
