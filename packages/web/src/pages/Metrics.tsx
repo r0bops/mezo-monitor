@@ -54,6 +54,21 @@ export function Metrics({
       )
     : null;
 
+  /**
+   * A calendar bucket at either edge of the window is structurally partial
+   * (the oldest starts mid-bucket at the window edge; the newest is still in
+   * progress) — comparing it against a FULL bucket's expected count would dim
+   * it as if indexing underperformed when it did not. Completeness is judged
+   * by timestamp, never by array position: during a real outage the last
+   * bucket is a complete one and dimming it is a true positive.
+   */
+  const unitMs = m?.volume.unit === "day" ? 86_400_000 : 3_600_000;
+  const windowStart = Date.now() - (m?.hours ?? hours) * 3_600_000;
+  const isCompleteBucket = (t: string): boolean => {
+    const ms = new Date(t).getTime();
+    return ms >= windowStart && ms + unitMs <= Date.now();
+  };
+
   const dist = m?.proposer_distribution ?? [];
   const maxShare = Math.max(0.01, ...dist.map((p) => p.share ?? 0));
 
@@ -144,16 +159,18 @@ export function Metrics({
             {volume.length === 0 && <EmptyBars />}
             {volume.map((h) => {
               const pctH = (h.n / maxVol) * 100;
+              // Only complete buckets are judged against the expected count.
+              const complete = isCompleteBucket(h.t);
               return (
                 <span
                   key={h.t}
-                  title={`${fmt(h.n)} blocks`}
+                  title={`${fmt(h.n)} blocks${complete ? "" : " · partial bucket"}`}
                   style={{
                     flex: 1,
                     borderRadius: "3px 3px 0 0",
                     height: `${Math.max(2, pctH).toFixed(0)}%`,
                     background:
-                      expectedPerBucket === null
+                      expectedPerBucket === null || !complete
                         ? "color-mix(in srgb, var(--ok) 55%, transparent)"
                         : h.n >= expectedPerBucket * 0.9
                           ? OK

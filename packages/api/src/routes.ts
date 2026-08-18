@@ -451,7 +451,11 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   });
 }
 
-/** Strip userinfo and query strings; keep enough to identify the endpoint. */
+/**
+ * Strip userinfo and query strings; keep enough to identify the endpoint.
+ * The regex fallback matters: an unparseable URL returned verbatim could carry
+ * credentials straight through the public facade.
+ */
 function redactUrl(raw: string | null): string | null {
   if (!raw) return raw;
   try {
@@ -463,7 +467,7 @@ function redactUrl(raw: string | null): string | null {
     u.search = "";
     return u.toString();
   } catch {
-    return raw;
+    return raw.replace(/\/\/[^/@:]+:[^/@]+@/, "//").replace(/\/\/[^/@]+@/, "//");
   }
 }
 

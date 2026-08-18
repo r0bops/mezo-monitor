@@ -89,32 +89,6 @@ export function StatusPill({
   );
 }
 
-export function SeverityChip({ severity }: { severity: string }) {
-  const map: Record<string, { bg: string; fg: string }> = {
-    critical: { bg: "var(--badSoft)", fg: BAD },
-    warning: { bg: "var(--warnSoft)", fg: WARN },
-    info: { bg: "var(--brandSoft)", fg: BRAND },
-    resolved: { bg: "var(--okSoft)", fg: OK },
-  };
-  const s = map[severity.toLowerCase()] ?? { bg: "var(--panel2)", fg: TX3 };
-  return (
-    <span
-      style={{
-        padding: "3px 7px",
-        borderRadius: 5,
-        font: `600 9px/1 ${sans}`,
-        letterSpacing: ".05em",
-        textTransform: "uppercase",
-        background: s.bg,
-        color: s.fg,
-        height: "fit-content",
-        flex: "none",
-      }}
-    >
-      {severity}
-    </span>
-  );
-}
 
 export function Identicon({ address, size = 16 }: { address: string; size?: number }) {
   const ic = identicon(address);

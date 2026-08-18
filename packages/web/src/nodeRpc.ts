@@ -44,12 +44,17 @@ export async function probeNode(rpcUrl: string): Promise<NodeProbe> {
       earliest: s.earliest_block_height,
       catchingUp: Boolean(s.catching_up),
     };
-  } catch {
-    // Fetch throws the same TypeError for CORS blocks, mixed-content blocks
-    // and unreachable hosts — the browser deliberately doesn't distinguish.
+  } catch (e) {
+    const latencyMs = Math.round(performance.now() - started);
+    // AbortSignal timeouts carry a name; everything else throws the same
+    // TypeError for CORS blocks, mixed-content blocks and unreachable hosts —
+    // the browser deliberately doesn't distinguish those.
+    if ((e as DOMException)?.name === "TimeoutError") {
+      return { state: "error", latencyMs, error: `no answer in ${latencyMs}ms (timeout)` };
+    }
     return {
       state: "blocked",
-      latencyMs: Math.round(performance.now() - started),
+      latencyMs,
       error: "browser blocked (no CORS headers, or http node on the https site)",
     };
   }

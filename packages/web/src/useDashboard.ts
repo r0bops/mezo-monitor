@@ -95,19 +95,26 @@ export function useDashboard(opts: {
   /**
    * Apply a local identity edit: PATCH the API, then fold the result into the
    * cached lists so the star/label appears without waiting for the slow loop.
+   * On failure the pre-edit values are restored immediately — a bare refresh()
+   * would only re-apply the optimistic edit's stale state on the next poll.
    */
   const patchValidator = useCallback(
     (address: string, patch: { label?: string | null; watched?: boolean }) => {
+      let before: { label?: string | null; watched?: boolean } | null = null;
       setValidators((vs) =>
-        vs.map((v) => (v.address === address ? { ...v, ...patch } : v)),
+        vs.map((v) => {
+          if (v.address !== address) return v;
+          before = { label: v.label, watched: v.watched };
+          return { ...v, ...patch };
+        }),
       );
       updateValidatorIdentity(address, patch).catch(() => {
-        // Revert on failure; the next poll would fix it, but an immediate
-        // revert tells the operator the edit didn't take.
-        refresh();
+        if (before) {
+          setValidators((vs) => vs.map((v) => (v.address === address ? { ...v, ...before } : v)));
+        }
       });
     },
-    [refresh],
+    [],
   );
 
   // Fast loop: the numbers that change every block.
