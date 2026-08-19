@@ -59,6 +59,33 @@ await refreshChain();
 head ??= new ChainHead("");
 
 const deps: Deps = { pool, head: () => head!, chain: () => chainRow };
+
+/**
+ * Security headers and cache policy, applied before any route is registered
+ * (Fastify hooks only cover routes that exist at registration time).
+ *
+ * - API/health responses are `no-store`: a proxy or browser must never serve
+ *   stale monitor data — the dashboard's whole value is freshness.
+ * - The SPA document gets the standard anti-embedding/sniffing set. CSP allows
+ *   inline styles (the app is inline-styled by design) but no script sources
+ *   beyond the same-origin bundle.
+ */
+fastify.addHook("onSend", async (req, reply, payload) => {
+  if (req.url.startsWith("/api/") || req.url === "/health") {
+    reply.header("cache-control", "no-store");
+    return payload;
+  }
+  reply.header("x-content-type-options", "nosniff");
+  reply.header("x-frame-options", "DENY");
+  reply.header("referrer-policy", "strict-origin-when-cross-origin");
+  reply.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
+  reply.header(
+    "content-security-policy",
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
+  );
+  return payload;
+});
+
 registerRoutes(fastify, deps);
 
 const chainTimer = setInterval(() => void refreshChain(), CHAIN_REFRESH_MS);

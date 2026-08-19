@@ -53,20 +53,22 @@ export class Cached<T> {
 /**
  * Keyed cache factory. Chains are re-resolved at runtime, so caches are created
  * per chain id rather than assuming a single chain for the process lifetime.
+ * String keys cover compound cache keys (e.g. "chain:address:window").
  */
 export class CacheMap<T> {
-  private readonly entries = new Map<number, Cached<T>>();
+  private readonly entries = new Map<string, Cached<T>>();
 
   constructor(
-    private readonly load: (key: number) => Promise<T>,
+    private readonly load: (key: string) => Promise<T>,
     private readonly ttlMs: number,
   ) {}
 
-  get(key: number): Promise<T> {
-    let entry = this.entries.get(key);
+  get(key: string | number): Promise<T> {
+    const k = String(key);
+    let entry = this.entries.get(k);
     if (!entry) {
-      entry = new Cached(() => this.load(key), this.ttlMs);
-      this.entries.set(key, entry);
+      entry = new Cached(() => this.load(k), this.ttlMs);
+      this.entries.set(k, entry);
     }
     return entry.get();
   }

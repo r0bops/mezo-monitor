@@ -100,20 +100,54 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
 
   // Shared across the validator, validator-set and metrics routes so one
   // refresh cycle costs a single scan rather than five.
-  const metricsCache = new CacheMap((chainId) => validatorMetrics(pool, chainId), DERIVED_TTL_MS);
-  const proposedCache = new CacheMap((chainId) => proposedTotal(pool, chainId), DERIVED_TTL_MS);
+  const metricsCache = new CacheMap(
+    (chainId) => validatorMetrics(pool, Number(chainId)),
+    DERIVED_TTL_MS,
+  );
+  const proposedCache = new CacheMap(
+    (chainId) => proposedTotal(pool, Number(chainId)),
+    DERIVED_TTL_MS,
+  );
+  /**
+   * The metrics horizon scans (30-day series, per-day volume) and the
+   * per-validator slot joins are uncached otherwise — an anonymous flood of
+   * GETs through the public facade would hold every pool connection busy.
+   * Same TTL + coalescing as the other caches: a burst costs one scan.
+   */
+  const statsCache = new CacheMap(
+    (key: string) => {
+      const [chainId, hours] = key.split(":").map(Number);
+      return Promise.all([
+        metricStats(pool, chainId, hours),
+        seriesBuckets(pool, chainId, hours * 60, hours <= 24 ? 60 : 120),
+        blocksPerBucket(pool, chainId, hours),
+      ]);
+    },
+    10_000,
+  );
+  const slotsCache = new CacheMap(
+    (key: string) => {
+      const [chainId, address, win] = key.split(":");
+      return signingSlots(pool, Number(chainId), address, Number(win));
+    },
+    5_000,
+  );
 
   /**
    * Any unhandled route failure is almost always the database being
    * unreachable. Report it in the shape the client already maps to its
-   * `dberror` state, so every route degrades the same way `/network` does.
+   * `dberror` state — but never echo the raw error to the client: pg messages
+   * carry internal topology (DB host, role names, timeouts) and both surfaces
+   * are anonymous. The full error is logged server-side.
    */
   app.setErrorHandler((err: FastifyError, _req, reply) => {
     app.log.error({ err }, "request failed");
     const status = err.statusCode && err.statusCode < 500 ? err.statusCode : 503;
-    reply
-      .code(status)
-      .send(status >= 500 ? { status: "dberror", error: err.message } : { error: err.message });
+    reply.code(status).send(
+      status >= 500
+        ? { status: "dberror", error: "database unavailable" }
+        : { error: err.message },
+    );
   });
 
   /** Chain row or a 503 — every data route needs it. */
@@ -219,8 +253,9 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         updated_at: new Date().toISOString(),
       };
     } catch (e) {
+      app.log.error({ err: e }, "network query failed");
       reply.code(503);
-      return { status: "dberror", error: String(e) };
+      return { status: "dberror", error: "database unavailable" };
     }
   });
 
@@ -252,7 +287,7 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       const [rows, total, slots] = await Promise.all([
         metricsCache.get(chain.id),
         proposedCache.get(chain.id),
-        signingSlots(pool, chain.id, address, win),
+        slotsCache.get(`${chain.id}:${address}:${win}`),
       ]);
       const row = rows.find((r) => r.address.toLowerCase() === address.toLowerCase());
       if (!row) {
@@ -334,10 +369,8 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     const hours = [24, 168, 720].includes(Number(req.query.hours))
       ? Number(req.query.hours)
       : 24;
-    const [stats, day, volume, rows, total] = await Promise.all([
-      metricStats(pool, chain.id, hours),
-      seriesBuckets(pool, chain.id, hours * 60, hours <= 24 ? 60 : 120),
-      blocksPerBucket(pool, chain.id, hours),
+    const [[stats, day, volume], rows, total] = await Promise.all([
+      statsCache.get(`${chain.id}:${hours}`),
       metricsCache.get(chain.id),
       proposedCache.get(chain.id),
     ]);
@@ -387,10 +420,21 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     },
   );
 
-  app.get("/api/v1/endpoints", async (_req, reply) => {
+  /**
+   * True when the request arrived through the public facade (set PUBLIC_HOST
+   * to its hostname). Endpoint URLs and failure telemetry name the operator's
+   * infrastructure — anonymous visitors get health and latency, not topology.
+   */
+  const viaPublicFacade = (host: string | undefined): boolean => {
+    const publicHost = process.env.PUBLIC_HOST;
+    return Boolean(publicHost) && Boolean(host) && host!.split(":")[0] === publicHost;
+  };
+
+  app.get<{ Headers: { host?: string } }>("/api/v1/endpoints", async (req, reply) => {
     const chain = requireChain(reply);
     if (!chain) return;
     const rows = await listEndpoints(pool, chain.id);
+    const publicView = viaPublicFacade(req.headers.host);
     return {
       count: rows.length,
       endpoints: rows.map((e) => ({
@@ -398,6 +442,8 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         // A node URL can carry credentials; never hand them back.
         rpc_url: redactUrl(e.rpc_url),
         ws_url: redactUrl(e.ws_url),
+        // And through the public facade: no URLs, no failure text.
+        ...(publicView ? { rpc_url: null, ws_url: null, last_error: null } : {}),
       })),
     };
   });
@@ -425,18 +471,20 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     },
   );
 
-  app.get("/api/v1/config", async (_req, reply) => {
+  app.get<{ Headers: { host?: string } }>("/api/v1/config", async (req, reply) => {
     const chain = requireChain(reply);
     if (!chain) return;
+    const publicView = viaPublicFacade(req.headers.host);
     return {
       chain: {
         slug: chain.slug,
         name: chain.name,
         chain_id: chain.chain_id,
         family: chain.family,
-        // Never leak credentials that may be embedded in an RPC URL.
-        rpc_url: redactUrl(chain.rpc_url),
-        ws_url: redactUrl(chain.ws_url),
+        // Never leak credentials that may be embedded in an RPC URL; through
+        // the public facade, no URLs at all.
+        rpc_url: publicView ? null : redactUrl(chain.rpc_url),
+        ws_url: publicView ? null : redactUrl(chain.ws_url),
         blockscout_url: chain.blockscout_url,
       },
       capabilities: chain.capabilities,
