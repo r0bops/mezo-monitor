@@ -1,11 +1,14 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # Digest-pinned: tag drift must be a deliberate, reviewable change.
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     container_name: mezo-monitor-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-mezo}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mezo}
+      # Required, not defaulted: a missing .env must fail loudly, not boot a
+      # known-password database.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB:-mezo_monitor}
     ports:
       # Bound to loopback: the host has a public IP and no firewall, so an

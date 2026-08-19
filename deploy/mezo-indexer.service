@@ -14,6 +14,11 @@ RestartSec=10
 # A restart re-runs backfill and the gap scanner, so any blocks missed while
 # the service was down are repaired rather than left as permanent holes.
 StartLimitIntervalSec=0
+# Hardening: the indexer needs no privileges and no writable filesystem.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=mezo-indexer

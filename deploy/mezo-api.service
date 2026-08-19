@@ -3,21 +3,25 @@ Description=Mezo Monitor API + dashboard
 Documentation=https://github.com/r0bops/mezo-monitor
 # Postgres runs in Docker; wait for the daemon but don't hard-require it —
 # the API re-resolves its chain every 30s and recovers on its own.
-After=network-online.target docker.service
+After=network-online.target docker.service tailscaled.service
 Wants=network-online.target
 # Tailscale must be up before the API can bind its tailnet address.
-After=tailscaled.service
 
 [Service]
 Type=simple
 WorkingDirectory=/root/mezo-monitor
 EnvironmentFile=/root/mezo-monitor/.env
 ExecStart=/usr/bin/pnpm --filter @mezo/api start
-Restart=on-failure
+Restart=always
 RestartSec=5
 # The tailnet address may not exist yet on a cold boot; keep retrying rather
 # than hitting the default start-limit and giving up permanently.
 StartLimitIntervalSec=0
+# Hardening: the API needs no privileges and no writable filesystem.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=mezo-api

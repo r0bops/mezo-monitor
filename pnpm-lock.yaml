@@ -20,6 +20,9 @@ importers:
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@types/pg@8.20.4)(@types/react@18.3.31)(pg@8.22.0)(react@18.3.1)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.10
       ws:
         specifier: ^8.18.0
         version: 8.21.2
@@ -36,9 +39,6 @@ importers:
       '@types/ws':
         specifier: ^8.5.13
         version: 8.18.1
-      tsx:
-        specifier: ^4.19.2
-        version: 4.23.10
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
@@ -60,6 +60,9 @@ importers:
       pg:
         specifier: ^8.13.0
         version: 8.22.0
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.10
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -70,9 +73,6 @@ importers:
       '@types/pg':
         specifier: ^8.11.10
         version: 8.20.4
-      tsx:
-        specifier: ^4.19.2
-        version: 4.23.10
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
