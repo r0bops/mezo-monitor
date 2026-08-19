@@ -27,19 +27,6 @@ import {
   type ValidatorSet,
 } from "./api";
 
-/** The dev switcher can also force the genesis-set presentation. */
-export type DevState = SystemState | "bootstrap";
-
-export const DEV_STATES: { id: DevState; label: string }[] = [
-  { id: "normal", label: "Normal" },
-  { id: "loading", label: "Loading" },
-  { id: "empty", label: "Bootstrapping" },
-  { id: "stopped", label: "Indexer stopped" },
-  { id: "dberror", label: "DB unreachable" },
-  { id: "backfill", label: "Backfill" },
-  { id: "bootstrap", label: "Genesis set" },
-];
-
 const REFRESH_MS = 10_000;
 const SLOW_REFRESH_MS = 30_000;
 
@@ -52,7 +39,7 @@ export type Dashboard = {
   config: Config | null;
   endpoints: EndpointList | null;
   detail: ValidatorDetail | null;
-  /** Effective state after any dev override. */
+  /** Effective state. */
   state: SystemState;
   bootstrap: boolean;
   error: string | null;
@@ -67,13 +54,12 @@ export type Dashboard = {
 
 export function useDashboard(opts: {
   live: boolean;
-  override: DevState | null;
   selected: string | null;
   window: number;
   /** Metrics horizon in hours (24 | 168 | 720). */
   metricsHours: number;
 }): Dashboard {
-  const { live, override, selected, window: win, metricsHours } = opts;
+  const { live, selected, window: win, metricsHours } = opts;
 
   const [net, setNet] = useState<Network | null>(null);
   const [validators, setValidators] = useState<Validator[]>([]);
@@ -215,8 +201,8 @@ export function useDashboard(opts: {
     config,
     endpoints,
     detail,
-    state: override && override !== "bootstrap" ? override : derived,
-    bootstrap: override === "bootstrap" ? true : (net?.vset_bootstrap ?? false),
+    state: derived,
+    bootstrap: net?.vset_bootstrap ?? false,
     error,
     lastUpdated,
     agoSeconds,

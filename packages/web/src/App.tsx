@@ -2,15 +2,14 @@
  * Shell: sidebar, header, state banner, page routing and footer.
  * Layout is the mockup's fixed 1440px desktop frame.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useDashboard, DEV_STATES, type DevState } from "./useDashboard";
+import { useCallback, useEffect, useState } from "react";
+import { useDashboard } from "./useDashboard";
 import { Overview, verdictFor } from "./pages/Overview";
 import { Validators } from "./pages/Validators";
 import { ValidatorSet } from "./pages/ValidatorSet";
 import { Metrics } from "./pages/Metrics";
 import { ApiDocs } from "./pages/ApiDocs";
 import { Settings } from "./pages/Settings";
-import { Components } from "./pages/Components";
 import { BAD, OK, TX, TX2, TX3, WARN, mono, sans } from "./components/ui";
 import { EndpointSwitcher } from "./components/EndpointSwitcher";
 import { agoText, copyText, fmt } from "./lib";
@@ -24,7 +23,6 @@ type PageId =
   | "metrics"
   | "api"
   | "settings"
-  | "components";
 
 const NAV: { id: PageId; label: string; d: string }[] = [
   { id: "overview", label: "Overview", d: "M4 4h5v5H4zM11 4h5v3h-5zM4 12h5v4H4zM11 10h5v6h-5z" },
@@ -46,20 +44,13 @@ const TITLES: Record<PageId, string> = {
   metrics: "Metrics",
   api: "API & Docs",
   settings: "Settings",
-  components: "Components",
 };
 
-const VALID_PAGES = new Set<string>([...NAV.map((n) => n.id), "components"]);
+const VALID_PAGES = new Set<string>(NAV.map((n) => n.id));
 
 function pageFromHash(): PageId {
   const h = window.location.hash.replace(/^#\/?/, "");
   return (VALID_PAGES.has(h) ? h : "overview") as PageId;
-}
-
-/** The state switcher is a prototyping aid, not a production control. */
-function devToolsEnabled(): boolean {
-  if (import.meta.env.DEV) return true;
-  return new URLSearchParams(window.location.search).has("debug");
 }
 
 export default function App() {
@@ -68,13 +59,10 @@ export default function App() {
   );
   const [page, setPage] = useState<PageId>(pageFromHash);
   const [live, setLive] = useState(true);
-  const [override, setOverride] = useState<DevState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [win, setWin] = useState(500);
   const [metricsHours, setMetricsHours] = useState(24);
   const [copied, setCopied] = useState<string | null>(null);
-
-  const showDevTools = useMemo(devToolsEnabled, []);
 
   useEffect(() => {
     localStorage.setItem("mezo-theme", theme);
@@ -91,7 +79,7 @@ export default function App() {
     setPage(id);
   }, []);
 
-  const d = useDashboard({ live, override, selected, window: win, metricsHours });
+  const d = useDashboard({ live, selected, window: win, metricsHours });
 
   // Default the detail panel to the first validator once data arrives.
   useEffect(() => {
@@ -117,7 +105,7 @@ export default function App() {
         color: TX,
         minHeight: "100vh",
         fontVariantNumeric: "tabular-nums",
-        paddingBottom: showDevTools ? 64 : 24,
+        paddingBottom: 24,
       }}
     >
       <div style={{ width: 1440, margin: "0 auto", display: "flex", alignItems: "stretch", minHeight: "100vh" }}>
@@ -288,7 +276,6 @@ export default function App() {
           {page === "metrics" && <Metrics d={d} hours={metricsHours} onHours={setMetricsHours} />}
           {page === "api" && <ApiDocs d={d} />}
           {page === "settings" && <Settings d={d} theme={theme} onTheme={setTheme} />}
-          {page === "components" && <Components />}
 
           <div
             style={{
@@ -343,7 +330,6 @@ export default function App() {
         </main>
       </div>
 
-      {showDevTools && <DevBar state={override} onState={setOverride} page={page} go={go} />}
     </div>
   );
 }
@@ -527,66 +513,4 @@ function bannerFor(d: ReturnType<typeof useDashboard>) {
     default:
       return null;
   }
-}
-
-function DevBar({
-  state,
-  onState,
-  page,
-  go,
-}: {
-  state: DevState | null;
-  onState: (s: DevState | null) => void;
-  page: PageId;
-  go: (p: PageId) => void;
-}) {
-  const btn = (active: boolean) => ({
-    padding: "6px 9px",
-    borderRadius: 7,
-    border: "none",
-    cursor: "pointer",
-    font: `600 10.5px/1 ${sans}`,
-    whiteSpace: "nowrap" as const,
-    background: active ? "#7C5CFF" : "rgba(255,255,255,.07)",
-    color: active ? "#fff" : "rgba(255,255,255,.62)",
-  });
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        left: "50%",
-        bottom: 18,
-        transform: "translateX(-50%)",
-        zIndex: 60,
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 10px",
-        borderRadius: 12,
-        background: "rgba(16,18,24,.94)",
-        border: "1px solid rgba(255,255,255,.1)",
-        boxShadow: "0 12px 34px -12px rgba(0,0,0,.7)",
-        backdropFilter: "blur(8px)",
-      }}
-    >
-      <span style={{ font: `600 8.5px/1 ${mono}`, letterSpacing: ".1em", color: "rgba(255,255,255,.4)", paddingLeft: 4 }}>
-        STATE
-      </span>
-      <div style={{ display: "flex", gap: 3 }}>
-        <button type="button" onClick={() => onState(null)} style={btn(state === null)}>
-          Live
-        </button>
-        {DEV_STATES.map((s) => (
-          <button key={s.id} type="button" onClick={() => onState(s.id)} style={btn(state === s.id)}>
-            {s.label}
-          </button>
-        ))}
-      </div>
-      <span style={{ width: 1, height: 18, background: "rgba(255,255,255,.14)" }} />
-      <button type="button" onClick={() => go("components")} style={btn(page === "components")}>
-        Components
-      </button>
-    </div>
-  );
 }
