@@ -48,7 +48,7 @@ export function Settings({
     : [];
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "start", maxWidth: 1000 }}>
+    <div className="g2" style={{ alignItems: "start", maxWidth: 1000 }}>
       <section style={{ ...panel, overflow: "hidden" }}>
         <Head title="Chain configuration" aside="chains/*.yaml" mono />
         {chainRows.length === 0 && <Loading />}

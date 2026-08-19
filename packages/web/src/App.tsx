@@ -108,7 +108,7 @@ export default function App() {
         paddingBottom: 24,
       }}
     >
-      <div style={{ width: 1440, margin: "0 auto", display: "flex", alignItems: "stretch", minHeight: "100vh" }}>
+      <div className="shell">
         <Sidebar page={page} go={go} d={d} />
 
         <main style={{ flex: 1, minWidth: 0, padding: "0 28px 30px", display: "flex", flexDirection: "column" }}>
@@ -353,17 +353,7 @@ function Sidebar({
 }) {
   const ix = indexerBadge(d);
   return (
-    <aside
-      style={{
-        width: 180,
-        flex: "none",
-        borderRight: "1px solid var(--line)",
-        background: "var(--panel)",
-        display: "flex",
-        flexDirection: "column",
-        padding: "20px 14px 14px",
-      }}
-    >
+    <aside className="side">
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 4px 22px" }}>
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none" style={{ flex: "none" }}>
           <rect x="1" y="8" width="2.6" height="6" rx="1.3" fill="var(--brand)" opacity=".45" />
@@ -378,7 +368,7 @@ function Sidebar({
         </div>
       </div>
 
-      <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <nav>
         {NAV.map((n) => (
           <a
             key={n.id}
@@ -407,7 +397,7 @@ function Sidebar({
         ))}
       </nav>
 
-      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 10, paddingTop: 18 }}>
+      <div className="sidefoot" style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: 18 }}>
         <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 9 }}>
           {d.net?.chain.capabilities.poa && (
             <div

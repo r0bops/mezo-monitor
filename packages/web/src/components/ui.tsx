@@ -2,7 +2,7 @@
  * Primitives shared across pages. Styling is inline and token-driven, matching
  * the mockup's structure so the rendered result is the same box model.
  */
-import type { CSSProperties, ReactNode } from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { identicon } from "../lib";
 
 export const OK = "var(--ok)";
@@ -309,6 +309,125 @@ export function LineChart({
         />
       )}
     </svg>
+  );
+}
+
+/**
+ * Single-series time chart with a crosshair + tooltip — the interaction layer
+ * a plotted chart owes its reader. 2px non-scaling stroke, recessive grid, and
+ * a ≥8px hover marker; values/labels wear ink tokens, never the series color.
+ * `values` should be gap-filled upstream (a missing bucket is "no sample").
+ */
+export function TimeSeriesChart({
+  values,
+  times,
+  min,
+  max,
+  stroke,
+  fillColor,
+  height = 150,
+  formatValue,
+  formatTime,
+  compact = false,
+}: {
+  values: number[];
+  times: string[];
+  min: number;
+  max: number;
+  stroke: string;
+  fillColor: string;
+  height?: number;
+  formatValue: (v: number) => string;
+  formatTime: (t: string) => string;
+  compact?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  const n = values.length;
+
+  const xFrac = (i: number) => (n <= 1 ? 0.5 : i / (n - 1));
+  const yFrac = (v: number) => {
+    const t = (Math.max(min, Math.min(max, v)) - min) / (max - min || 1);
+    return 1 - t;
+  };
+
+  const onMove = (e: React.PointerEvent) => {
+    if (!ref.current || n === 0) return;
+    const r = ref.current.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    setHover(Math.round(f * (n - 1)));
+  };
+
+  const line = n
+    ? values.map((v, i) => `${(xFrac(i) * 100).toFixed(2)},${(yFrac(v) * 100).toFixed(2)}`).join(" ")
+    : "";
+  const areaP = line ? `M0,100 L${line.split(" ").join(" L")} L100,100 Z` : "";
+
+  return (
+    <div
+      ref={ref}
+      style={{ position: "relative", height, touchAction: "none" }}
+      onPointerMove={onMove}
+      onPointerLeave={() => setHover(null)}
+    >
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+        {!compact &&
+          [0, 0.25, 0.5, 0.75, 1].map((g) => (
+            <line key={g} x1="0" y1={g * 100} x2="100" y2={g * 100} stroke="var(--grid)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+          ))}
+        {areaP && <path d={areaP} fill={fillColor} />}
+        {line && (
+          <polyline points={line} fill="none" stroke={stroke} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        )}
+      </svg>
+
+      {hover !== null && values[hover] !== undefined && (
+        <>
+          <span style={{ position: "absolute", left: `${xFrac(hover) * 100}%`, top: 0, bottom: 0, width: 1, background: "var(--line2)", transform: "translateX(-.5px)" }} />
+          <span
+            style={{
+              position: "absolute",
+              left: `${xFrac(hover) * 100}%`,
+              top: `${yFrac(values[hover]) * 100}%`,
+              width: 9,
+              height: 9,
+              borderRadius: "50%",
+              background: stroke,
+              border: "2px solid var(--panel)",
+              transform: "translate(-50%, -50%)",
+              boxShadow: "0 0 0 1px var(--line2)",
+            }}
+          />
+          <span
+            style={{
+              position: "absolute",
+              left: `${xFrac(hover) * 100}%`,
+              top: `${yFrac(values[hover]) * 100}%`,
+              transform: `translate(-50%, -130%) translateY(-8px)`,
+              padding: "6px 9px",
+              borderRadius: 8,
+              background: "var(--panel)",
+              border: "1px solid var(--line2)",
+              boxShadow: "var(--shadow)",
+              whiteSpace: "nowrap",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              pointerEvents: "none",
+              // keep the tooltip inside the card at either edge
+              marginLeft: hover === 0 ? 40 : hover === n - 1 ? -40 : 0,
+            }}
+          >
+            <span style={{ font: `400 9.5px/1 ${mono}`, color: TX3 }}>
+              {formatTime(times[hover] ?? "")}
+            </span>
+            <span style={{ font: `600 12px/1 ${mono}`, color: TX }}>
+              {formatValue(values[hover])}
+            </span>
+          </span>
+        </>
+      )}
+    </div>
   );
 }
 

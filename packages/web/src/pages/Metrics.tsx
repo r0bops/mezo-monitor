@@ -1,8 +1,8 @@
 /** Metrics: consensus charts over a selectable horizon (24h / 7d / 30d). */
 import { useMemo } from "react";
 import type { Dashboard } from "../useDashboard";
-import { BRAND, Label, LineChart, OK, TX, TX2, TX3, WARN, mono, panel, sans } from "../components/ui";
-import { area, fill, fmt, pct, pts, secs, short } from "../lib";
+import { BRAND, Label, OK, TX, TX2, TX3, WARN, mono, panel, sans, TimeSeriesChart } from "../components/ui";
+import { fill, fmt, pct, secs, short } from "../lib";
 
 const RANGES: { hours: number; label: string; axis: [string, string | undefined, string] }[] = [
   { hours: 24, label: "24h", axis: ["−24h", "−12h", "now"] },
@@ -109,7 +109,7 @@ export function Metrics({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+      <div className="g4">
         {stats.map((s) => (
           <div key={s.label} style={{ ...panel, padding: "15px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
             <Label>{s.label}</Label>
@@ -118,32 +118,36 @@ export function Metrics({
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div className="g2">
         <ChartCard
           title="Block time"
           note={`last ${shown.label} · y-axis 2–6s`}
           labels={["6s", "4s", "2s"]}
           series={bt}
+          times={(m?.series ?? []).map((p) => p.t)}
           min={2}
           max={6}
-          stroke={OK}
-          fillColor="var(--okSoft)"
+          stroke={BRAND}
+          fillColor="var(--brandSoft)"
           axis={shown.axis}
+          formatValue={(v) => `${v.toFixed(2)}s`}
         />
         <ChartCard
           title="Signing rate"
           note={`last ${shown.label} · y-axis 90–100%`}
           labels={["100%", "", "90%"]}
           series={sr}
+          times={(m?.series ?? []).map((p) => p.t)}
           min={90}
           max={100}
           stroke={BRAND}
           fillColor="var(--brandSoft)"
           axis={shown.axis}
+          formatValue={(v) => `${v.toFixed(2)}%`}
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div className="g2">
         <section style={{ ...panel, padding: "16px 18px 14px", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
             <h3 style={{ margin: 0, font: `600 13px/1 ${sans}`, color: TX }}>
@@ -243,21 +247,25 @@ function ChartCard({
   note,
   labels,
   series,
+  times,
   min,
   max,
   stroke,
   fillColor,
   axis,
+  formatValue,
 }: {
   title: string;
   note: string;
   labels: [string, string, string];
   series: number[];
+  times: string[];
   min: number;
   max: number;
   stroke: string;
   fillColor: string;
   axis: [string, string | undefined, string];
+  formatValue: (v: number) => string;
 }) {
   return (
     <section style={{ ...panel, padding: "16px 18px 14px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -266,13 +274,16 @@ function ChartCard({
         <span style={{ font: `400 10.5px/1 ${sans}`, color: TX3 }}>{note}</span>
       </div>
       <div style={{ position: "relative", height: 150 }}>
-        <LineChart
-          viewW={520}
-          viewH={150}
-          points={pts(series, 520, 150, min, max)}
-          areaPath={area(series, 520, 150, min, max)}
+        <TimeSeriesChart
+          values={series}
+          times={times}
+          min={min}
+          max={max}
           stroke={stroke}
-          fill={fillColor}
+          fillColor={fillColor}
+          height={150}
+          formatValue={formatValue}
+          formatTime={(t) => new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
         />
         <span style={{ position: "absolute", left: 0, top: -7, font: `400 9px/1 ${mono}`, color: TX3 }}>
           {labels[0]}

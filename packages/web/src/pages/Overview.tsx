@@ -10,8 +10,8 @@ import {
   EmptyState,
   Identicon,
   Label,
-  LineChart,
   Meter,
+  TimeSeriesChart,
   OK,
   Section,
   Skeleton,
@@ -76,7 +76,7 @@ export function Overview({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {loading ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 14 }}>
+        <div className="g5">
           {[0, 1, 2, 3, 4].map((i) => (
             <div
               key={i}
@@ -89,7 +89,7 @@ export function Overview({
           ))}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 14 }}>
+        <div className="g5">
           <HeightTile
             dash={dash}
             stopped={stopped}
@@ -105,7 +105,7 @@ export function Overview({
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 14, alignItems: "stretch" }}>
+      <div className="row">
         <ValidatorTable
           d={d}
           selected={selected}
@@ -128,24 +128,27 @@ export function Overview({
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, alignItems: "stretch" }}>
+      <div className="g4" style={{ alignItems: "stretch" }}>
         <NetworkHealth d={d} dash={dash} />
         <MiniChart
           title="Block Time"
           now={secs(btSeries.length ? btSeries[btSeries.length - 1] : null)}
           series={btSeries}
+          times={d.series?.points ?? []}
           min={2}
           max={6}
-          stroke={OK}
-          fillColor="var(--okSoft)"
+          stroke={BRAND}
+          fillColor="var(--brandSoft)"
           topLabel="6s"
           bottomLabel="2s"
           dash={dash}
+          formatValue={(v) => `${v.toFixed(2)}s`}
         />
         <MiniChart
           title="Signing Rate"
           now={pct(srSeries.length ? srSeries[srSeries.length - 1] : null)}
           series={srSeries}
+          times={d.series?.points ?? []}
           min={0}
           max={100}
           stroke={BRAND}
@@ -153,6 +156,7 @@ export function Overview({
           topLabel="100%"
           bottomLabel="0%"
           dash={dash}
+          formatValue={(v) => `${v.toFixed(1)}%`}
         />
         <SetChanges d={d} />
       </div>
@@ -1077,6 +1081,7 @@ function MiniChart({
   title,
   now,
   series,
+  times,
   min,
   max,
   stroke,
@@ -1084,10 +1089,12 @@ function MiniChart({
   topLabel,
   bottomLabel,
   dash,
+  formatValue,
 }: {
   title: string;
   now: string;
   series: number[];
+  times: { t: string }[];
   min: number;
   max: number;
   stroke: string;
@@ -1095,6 +1102,7 @@ function MiniChart({
   topLabel: string;
   bottomLabel: string;
   dash: boolean;
+  formatValue: (v: number) => string;
 }) {
   return (
     <section style={{ ...panel, padding: "15px 16px 12px", display: "flex", flexDirection: "column", gap: 11 }}>
@@ -1107,14 +1115,26 @@ function MiniChart({
         <span style={{ font: `500 10.5px/1 ${sans}`, color: TX3 }}>current</span>
       </div>
       <div style={{ position: "relative", flex: 1, minHeight: 96 }}>
-        <LineChart
-          viewW={254}
-          viewH={96}
-          points={dash ? "" : pts(series, 254, 96, min, max)}
-          areaPath={dash ? "" : area(series, 254, 96, min, max)}
-          stroke={stroke}
-          fill={fillColor}
-        />
+        {!dash ? (
+          <TimeSeriesChart
+            values={series}
+            times={times.map((p) => p.t)}
+            min={min}
+            max={max}
+            stroke={stroke}
+            fillColor={fillColor}
+            height={96}
+            compact
+            formatValue={formatValue}
+            formatTime={(t) => new Date(t).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+          />
+        ) : (
+          <svg viewBox="0 0 100 20" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+            {[2, 6, 10, 14, 18].map((y) => (
+              <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="var(--grid)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            ))}
+          </svg>
+        )}
         <span style={{ position: "absolute", left: 0, top: -6, font: `400 8.5px/1 ${mono}`, color: TX3 }}>
           {topLabel}
         </span>
@@ -1129,7 +1149,6 @@ function MiniChart({
     </section>
   );
 }
-
 function SetChanges({ d }: { d: Dashboard }) {
   const events = (d.set?.changes ?? []).slice(0, 5);
   return (

@@ -27,7 +27,7 @@ export function ValidatorSet({ d }: { d: Dashboard }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+      <div className="g3">
         {stats.map((s) => (
           <div key={s.label} style={{ ...panel, padding: "15px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
             <Label>{s.label}</Label>
@@ -37,7 +37,7 @@ export function ValidatorSet({ d }: { d: Dashboard }) {
         ))}
       </div>
 
-      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+      <div className="row" style={{ alignItems: "flex-start" }}>
         <section style={{ ...panel, flex: 1, minWidth: 0, overflow: "hidden" }}>
           <div
             style={{
