@@ -29,6 +29,7 @@ import {
   type ValidatorRow,
 } from "./queries.js";
 import { CacheMap } from "./cache.js";
+import { createAvatarResolver, withAvatars } from "./avatars.js";
 
 /** Lag beyond which the indexer is considered stalled rather than merely behind. */
 const STALL_LAG_BLOCKS = 50;
@@ -52,6 +53,9 @@ export type Deps = {
 type ValidatorView = {
   address: string;
   moniker: string | null;
+  identity: string | null;
+  /** Keybase avatar for the identity, or null when there is none to fetch. */
+  avatar_url: string | null;
   label: string | null;
   watched: boolean;
   pub_key: string | null;
@@ -69,13 +73,18 @@ type ValidatorView = {
   status: "active" | "degraded" | "inactive";
 };
 
-function viewValidator(v: ValidatorRow, proposedTotalCount: number): ValidatorView {
+function viewValidator(
+  v: ValidatorRow & { avatar_url?: string | null },
+  proposedTotalCount: number,
+): ValidatorView {
   const uptime1 = v.slots_short > 0 ? (v.signed_short / v.slots_short) * 100 : null;
   const uptime10 = v.slots_long > 0 ? (v.signed_long / v.slots_long) * 100 : null;
   const degraded = v.missed_streak >= 3 || (uptime1 !== null && uptime1 < 99.5);
   return {
     address: v.address,
     moniker: v.moniker,
+    identity: v.identity,
+    avatar_url: v.avatar_url ?? null,
     label: v.label,
     watched: v.watched,
     pub_key: v.pub_key,
@@ -97,6 +106,8 @@ function viewValidator(v: ValidatorRow, proposedTotalCount: number): ValidatorVi
 
 export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   const { pool } = deps;
+  /** Keybase avatar per validator identity; day-TTL, fail-soft to null. */
+  const resolveAvatar = createAvatarResolver();
 
   // Shared across the validator, validator-set and metrics routes so one
   // refresh cycle costs a single scan rather than five.
@@ -266,7 +277,8 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       metricsCache.get(chain.id),
       proposedCache.get(chain.id),
     ]);
-    const validators = rows.map((v) => viewValidator(v, total));
+    const withLogos = await withAvatars(rows, resolveAvatar);
+    const validators = withLogos.map((v) => viewValidator(v, total));
     // Rank by proposer share so the list order matches the "rank" column.
     validators.sort((a, b) => (b.proposer_share_1000 ?? 0) - (a.proposer_share_1000 ?? 0));
     return {
@@ -294,8 +306,9 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         reply.code(404);
         return { error: "validator not found", address };
       }
+      const [withLogo] = await withAvatars([row], resolveAvatar);
       return {
-        validator: viewValidator(row, total),
+        validator: viewValidator(withLogo, total),
         window: win,
         slots: slots.map((s) => ({
           height: s.height,
@@ -343,7 +356,7 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       setChanges(pool, chain.id, 50),
       isBootstrapSet(pool, chain.id),
     ]);
-    const members = rows.map((v) => viewValidator(v, total));
+    const members = (await withAvatars(rows, resolveAvatar)).map((v) => viewValidator(v, total));
     const active = members.filter((m) => m.is_active);
     return {
       set_size: active.length,
@@ -374,6 +387,8 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
       metricsCache.get(chain.id),
       proposedCache.get(chain.id),
     ]);
+    // The distribution carries no avatars, so it maps the raw rows through
+    // viewValidator with the logo fields left unset.
     const dist = rows
       .map((v) => viewValidator(v, total))
       .sort((a, b) => (b.proposer_share_1000 ?? 0) - (a.proposer_share_1000 ?? 0))
