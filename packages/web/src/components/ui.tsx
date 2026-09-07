@@ -113,6 +113,46 @@ export function Identicon({ address, size = 16 }: { address: string; size?: numb
   );
 }
 
+/**
+ * Validator avatar: the operator's real logo (resolved from their Keybase
+ * identity by the API) with the address-derived identicon as fallback. A logo
+ * that fails to load falls back client-side too, so a dead Keybase URL never
+ * leaves a blank slot.
+ */
+export function ValidatorAvatar({
+  address,
+  avatarUrl,
+  title,
+  size = 20,
+}: {
+  address: string;
+  avatarUrl: string | null;
+  title?: string;
+  size?: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  const showLogo = avatarUrl !== null && !failed;
+  return showLogo ? (
+    <img
+      src={avatarUrl}
+      alt=""
+      title={title}
+      loading="lazy"
+      onError={() => setFailed(true)}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size >= 20 ? 5 : 4,
+        flex: "none",
+        objectFit: "cover",
+        background: "var(--panel2)",
+      }}
+    />
+  ) : (
+    <Identicon address={address} size={size} />
+  );
+}
+
 /** Thin progress bar used for uptime and proposer share. */
 export function Bar({ width, color, h = 3 }: { width: string; color: string; h?: number }) {
   return (

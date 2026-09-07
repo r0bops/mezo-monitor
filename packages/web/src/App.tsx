@@ -10,6 +10,7 @@ import { ValidatorSet } from "./pages/ValidatorSet";
 import { Metrics } from "./pages/Metrics";
 import { ApiDocs } from "./pages/ApiDocs";
 import { Settings } from "./pages/Settings";
+import { DirectRpc } from "./pages/DirectRpc";
 import { BAD, OK, TX, TX2, TX3, WARN, mono, sans } from "./components/ui";
 import { EndpointSwitcher } from "./components/EndpointSwitcher";
 import { agoText, copyText, fmt } from "./lib";
@@ -21,6 +22,7 @@ type PageId =
   | "validators"
   | "vset"
   | "metrics"
+  | "rpc"
   | "api"
   | "settings"
 
@@ -29,6 +31,7 @@ const NAV: { id: PageId; label: string; d: string }[] = [
   { id: "validators", label: "Validators", d: "M4 6h12M4 10h12M4 14h12" },
   { id: "vset", label: "Validator Set", d: "M10 3l6 3.5v7L10 17l-6-3.5v-7z" },
   { id: "metrics", label: "Metrics", d: "M4 15l4-5 3 3 5-7" },
+  { id: "rpc", label: "Direct RPC", d: "M7 4C4.8 9 4.8 11 7 16M13 4c2.2 5 2.2 7 0 12M4 10h12" },
   { id: "api", label: "API & Docs", d: "M7 6l-3 4 3 4M13 6l3 4-3 4" },
   {
     id: "settings",
@@ -42,6 +45,7 @@ const TITLES: Record<PageId, string> = {
   validators: "Validators",
   vset: "Validator Set",
   metrics: "Metrics",
+  rpc: "Direct RPC",
   api: "API & Docs",
   settings: "Settings",
 };
@@ -274,6 +278,7 @@ export default function App() {
           {page === "validators" && <Validators d={d} selected={selected} onSelect={setSelected} />}
           {page === "vset" && <ValidatorSet d={d} />}
           {page === "metrics" && <Metrics d={d} hours={metricsHours} onHours={setMetricsHours} />}
+          {page === "rpc" && <DirectRpc d={d} />}
           {page === "api" && <ApiDocs d={d} />}
           {page === "settings" && <Settings d={d} theme={theme} onTheme={setTheme} />}
 

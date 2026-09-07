@@ -1,6 +1,6 @@
 /** Validator Set: current membership plus the churn history. */
 import type { Dashboard } from "../useDashboard";
-import { BAD, Identicon, Label, OK, StatusPill, TX, TX2, TX3, mono, panel, sans } from "../components/ui";
+import { BAD, Label, OK, StatusPill, TX, TX2, TX3, ValidatorAvatar, mono, panel, sans } from "../components/ui";
 import { agoFrom, fmt, short } from "../lib";
 
 const COLS = "32px 190px 96px 116px 116px 84px";
@@ -94,7 +94,12 @@ export function ValidatorSet({ d }: { d: Dashboard }) {
             >
               <span style={{ font: `500 11px/1 ${mono}`, color: TX3 }}>{m.rank}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <Identicon address={m.address} size={18} />
+                <ValidatorAvatar
+                  address={m.address}
+                  avatarUrl={m.avatar_url}
+                  title={m.moniker ? `${m.moniker} logo` : undefined}
+                  size={18}
+                />
                 <span style={{ font: `500 12px/1 ${mono}`, color: TX2, whiteSpace: "nowrap" }}>
                   {short(m.address)}
                 </span>

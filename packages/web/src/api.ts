@@ -59,6 +59,10 @@ export type Validator = {
   rank: number;
   address: string;
   moniker: string | null;
+  /** Keybase identity (64-hex) from the chain's x/poa description, if any. */
+  identity: string | null;
+  /** The operator's Keybase avatar, or null — rendered as an identicon. */
+  avatar_url: string | null;
   /** Operator-assigned local identity; the chain itself exposes no monikers. */
   label: string | null;
   /** Marks validators this operator cares about. */

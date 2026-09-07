@@ -8,12 +8,12 @@ import {
   Bar,
   CopyButton,
   EmptyState,
-  Identicon,
   Label,
   Meter,
   TimeSeriesChart,
   OK,
   Section,
+  ValidatorAvatar,
   Skeleton,
   StatusPill,
   TX,
@@ -508,7 +508,7 @@ function ValidatorTable({
             <span style={{ font: `400 10.5px/1 ${mono}`, color: TX3 }}>
               {backfill
                 ? `long window ${longPct(d)}% backfilled`
-                : "consensus addresses · no monikers on this chain · labels are local"}
+                : "consensus addresses · monikers synced from x/poa · labels are local"}
             </span>
           </div>
         </div>
@@ -577,7 +577,7 @@ function Row({
       >
         <span style={{ ...cell, fontSize: 11, color: TX3 }}>{v.rank}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-          <Identicon address={v.address} size={16} />
+          <ValidatorAvatar address={v.address} avatarUrl={v.avatar_url} title={v.moniker ?? undefined} size={16} />
           <span style={{ ...cell, color: selected ? TX : TX2, letterSpacing: "-.01em", whiteSpace: "nowrap" }}>
             {short(v.address)}
           </span>
@@ -750,7 +750,7 @@ function DetailPanel({
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {sel ? (
               <>
-                <Identicon address={sel.address} size={20} />
+                <ValidatorAvatar address={sel.address} avatarUrl={sel.avatar_url} title={sel.moniker ?? undefined} size={20} />
                 <span style={{ font: `600 14px/1 ${mono}`, color: TX, letterSpacing: "-.01em" }}>
                   {short(sel.address)}
                 </span>

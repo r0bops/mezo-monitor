@@ -6,8 +6,8 @@ import {
   BAD,
   BRAND,
   Bar,
-  Identicon,
   Label,
+  ValidatorAvatar,
   OK,
   StatusPill,
   TX,
@@ -324,7 +324,12 @@ function FullRow({
         {v.watched ? "★" : "☆"}
       </button>
       <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-        <Identicon address={v.address} size={20} />
+        <ValidatorAvatar
+          address={v.address}
+          avatarUrl={v.avatar_url}
+          title={v.moniker ? `${v.moniker} logo` : undefined}
+          size={20}
+        />
         <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
           <span style={{ font: `500 12.5px/1 ${mono}`, color: selected ? TX : TX2, whiteSpace: "nowrap" }}>
             {short(v.address)}
