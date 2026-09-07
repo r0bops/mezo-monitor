@@ -75,19 +75,32 @@ export function consensusAddress(pubkeyBech32: string): string {
   return createHash("sha256").update(key).digest().subarray(0, 20).toString("hex").toUpperCase();
 }
 
-type LcdValidator = { cons_pub_key_bech32?: unknown; description?: { moniker?: unknown } };
+type LcdValidator = {
+  cons_pub_key_bech32?: unknown;
+  description?: { moniker?: unknown; identity?: unknown };
+};
 
-/** Extract a lowercase consensus address → moniker map from an LCD response. */
-export function monikersFromLcd(json: unknown): Map<string, string> {
-  const out = new Map<string, string>();
+/** What the indexer can learn about a validator from its x/poa LCD entry. */
+export type LcdInfo = { moniker: string; identity: string | null };
+
+/** Extract a lowercase consensus address → {moniker, identity} map from an LCD response. */
+export function monikersFromLcd(json: unknown): Map<string, LcdInfo> {
+  const out = new Map<string, LcdInfo>();
   const list = (json as { validators?: unknown })?.validators;
   if (!Array.isArray(list)) return out;
   for (const v of list as LcdValidator[]) {
     if (typeof v?.cons_pub_key_bech32 !== "string") continue;
     const moniker = v?.description?.moniker;
     if (typeof moniker !== "string" || moniker.trim() === "") continue;
+    const identity =
+      typeof v?.description?.identity === "string" && v.description.identity.trim() !== ""
+        ? v.description.identity.trim()
+        : null;
     try {
-      out.set(consensusAddress(v.cons_pub_key_bech32).toLowerCase(), moniker.trim());
+      out.set(consensusAddress(v.cons_pub_key_bech32).toLowerCase(), {
+        moniker: moniker.trim(),
+        identity,
+      });
     } catch {
       // A malformed entry must not sink the rest of the list.
     }
@@ -96,27 +109,28 @@ export function monikersFromLcd(json: unknown): Map<string, string> {
 }
 
 /**
- * Persist monikers onto the indexed validators. Only rows whose moniker
- * actually changed are written; addresses are matched case-insensitively
- * (CometBFT reports uppercase, the indexer stores lowercase).
+ * Persist monikers and Keybase identities onto the indexed validators. Only
+ * rows where something actually changed are written; addresses are matched
+ * case-insensitively (CometBFT reports uppercase, the indexer stores lowercase).
  */
 export async function syncMonikers(
   db: Database,
   chainId: number,
-  monikers: Map<string, string>,
+  monikers: Map<string, LcdInfo>,
 ): Promise<number> {
   if (monikers.size === 0) return 0;
   const rows = await db
-    .select({ address: validators.address, moniker: validators.moniker })
+    .select({ address: validators.address, moniker: validators.moniker, identity: validators.identity })
     .from(validators)
     .where(eq(validators.chainId, chainId));
   let updated = 0;
   for (const r of rows) {
-    const moniker = monikers.get(r.address.toLowerCase());
-    if (moniker === undefined || moniker === r.moniker) continue;
+    const info = monikers.get(r.address.toLowerCase());
+    if (info === undefined) continue;
+    if (info.moniker === r.moniker && info.identity === r.identity) continue;
     await db
       .update(validators)
-      .set({ moniker, updatedAt: new Date() })
+      .set({ moniker: info.moniker, identity: info.identity, updatedAt: new Date() })
       .where(and(eq(validators.chainId, chainId), eq(validators.address, r.address)));
     updated++;
   }
@@ -124,7 +138,7 @@ export async function syncMonikers(
 }
 
 /** Fetch + parse the x/poa validator list from the LCD. */
-export async function fetchMonikers(lcdUrl: string): Promise<Map<string, string>> {
+export async function fetchMonikers(lcdUrl: string): Promise<Map<string, LcdInfo>> {
   const url = lcdUrl.replace(/\/+$/, "") + "/poa/v1/validators";
   const res = await fetch(url, {
     headers: { accept: "application/json" },

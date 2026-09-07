@@ -97,6 +97,12 @@ export const validators = pgTable(
     pubKey: text("pub_key"), // consensus public key
     moniker: text("moniker"), // best-effort, nullable (PoA may expose no moniker)
     /**
+     * Keybase identity (64-hex) from the x/poa description, nullable. Resolved
+     * to the operator's real logo by the API; a null here means the chain
+     * exposed no identity, not that the validator has none.
+     */
+    identity: text("identity"),
+    /**
      * Local, operator-assigned identity. Mezo is PoA with no staking module, so
      * the chain may never expose monikers; a human label ("Ours", "Broker X")
      * is the only way to answer "is mine healthy?".

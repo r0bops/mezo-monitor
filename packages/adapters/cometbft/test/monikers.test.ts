@@ -69,10 +69,17 @@ describe("monikersFromLcd", () => {
   it("maps every well-formed entry and skips broken ones", () => {
     const json = {
       validators: [
-        ...VECTORS.map(([pub, , moniker]) => ({
-          cons_pub_key_bech32: pub,
-          description: { moniker },
-        })),
+        // A carries a Keybase identity alongside its moniker
+        {
+          cons_pub_key_bech32: VECTORS[0][0],
+          description: { moniker: "voyage-through-time", identity: "ABCDEF0123456789ABCDEF0123456789ABCDEF01" },
+        },
+        // B: a blank identity must normalize to null, not ""
+        {
+          cons_pub_key_bech32: VECTORS[1][0],
+          description: { moniker: "StakingCabin", identity: "  " },
+        },
+        { cons_pub_key_bech32: VECTORS[2][0], description: { moniker: "Node.Monster" } },
         { cons_pub_key_bech32: "garbage", description: { moniker: "X" } }, // bad pubkey
         { cons_pub_key_bech32: VECTORS[0][0], description: { moniker: "  " } }, // blank name
         { operator_bech32: "mezovaloper1nope" }, // no pubkey at all
@@ -80,7 +87,12 @@ describe("monikersFromLcd", () => {
     };
     const map = monikersFromLcd(json);
     expect(map.size).toBe(3);
-    expect(map.get(A)).toBe("voyage-through-time");
+    expect(map.get(A)).toEqual({
+      moniker: "voyage-through-time",
+      identity: "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+    });
+    expect(map.get(B)).toEqual({ moniker: "StakingCabin", identity: null });
+    expect(map.get(C)).toEqual({ moniker: "Node.Monster", identity: null });
   });
 
   it("returns an empty map (never throws) for a non-x/poa response", () => {
@@ -92,8 +104,8 @@ describe("monikersFromLcd", () => {
 describe("syncMonikers", () => {
   it("writes monikers onto matching validators and ignores the rest", async () => {
     const map = new Map([
-      [A, "voyage-through-time"],
-      [B, "StakingCabin"],
+      [A, { moniker: "voyage-through-time", identity: "ABCDEF0123456789ABCDEF0123456789ABCDEF01" }],
+      [B, { moniker: "StakingCabin", identity: null }],
       // C deliberately absent: an LCD entry missing for a known validator must
       // not blank the stored name.
     ]);
@@ -101,20 +113,22 @@ describe("syncMonikers", () => {
     expect(updated).toBe(2);
 
     const r = await pool.query(
-      `select address, moniker from validators where chain_id = $1 order by address`,
+      `select address, moniker, identity from validators where chain_id = $1 order by address`,
       [chainId],
     );
-    const byAddr = new Map(r.rows.map((x) => [x.address, x.moniker]));
-    expect(byAddr.get(A)).toBe("voyage-through-time");
-    expect(byAddr.get(B)).toBe("StakingCabin");
-    expect(byAddr.get(C)).toBeNull();
+    const byAddr = new Map(r.rows.map((x) => [x.address, x]));
+    expect(byAddr.get(A)?.moniker).toBe("voyage-through-time");
+    expect(byAddr.get(A)?.identity).toBe("ABCDEF0123456789ABCDEF0123456789ABCDEF01");
+    expect(byAddr.get(B)?.moniker).toBe("StakingCabin");
+    expect(byAddr.get(B)?.identity).toBeNull();
+    expect(byAddr.get(C)?.moniker).toBeNull();
 
     // Re-running with the same map is a no-op.
     expect(await syncMonikers(db, chainId, map)).toBe(0);
   });
 
   it("updates a changed moniker but keeps a name the LCD no longer lists", async () => {
-    const map = new Map([[A, "renamed"]]);
+    const map = new Map([[A, { moniker: "renamed", identity: null }]]);
     expect(await syncMonikers(db, chainId, map)).toBe(1);
     const r = await pool.query<{ moniker: string }>(
       `select moniker from validators where chain_id = $1 and address = $2`,

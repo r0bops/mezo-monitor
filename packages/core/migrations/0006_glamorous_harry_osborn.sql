@@ -1,0 +1,1 @@
+ALTER TABLE "validators" ADD COLUMN "identity" text;
