@@ -18,9 +18,18 @@ rpc_url: ${MEZO_RPC_URL}
 ws_url: ${MEZO_RPC_WS_URL}
 
 # Cosmos LCD base URL. Mezo's custom x/poa module serves validator monikers
-# at {lcd_url}/poa/v1/validators — the CometBFT RPC cannot. An unset ${VAR}
-# is skipped and validators stay nameless.
+# and keybase identities at {lcd}/poa/v1/validators — the CometBFT RPC cannot.
+# Mezo's REST API is disabled by default on nodes, so public LCDs are rare;
+# the indexer tries these in order (preferring whichever answered last), and
+# an unset ${VAR} is skipped with a warning.
 lcd_url: ${MEZO_LCD_URL}
+
+# LCD failover list. No second public Mezo LCD is currently known — the slot
+# below is intentionally unset. Set MEZO_LCD_URL_2 in .env the moment one
+# appears and moniker/logo sync survives a provider outage.
+lcd_urls:
+  - ${MEZO_LCD_URL}
+  - ${MEZO_LCD_URL_2}
 
 # Failover list, tried in priority order (lower wins). The indexer probes each
 # on an interval and switches automatically when the active one degrades; a

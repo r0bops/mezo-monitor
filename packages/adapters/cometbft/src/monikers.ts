@@ -137,8 +137,8 @@ export async function syncMonikers(
   return updated;
 }
 
-/** Fetch + parse the x/poa validator list from the LCD. */
-export async function fetchMonikers(lcdUrl: string): Promise<Map<string, LcdInfo>> {
+/** Fetch + parse the x/poa validator list from one LCD. */
+export async function fetchMonikersFrom(lcdUrl: string): Promise<Map<string, LcdInfo>> {
   const url = lcdUrl.replace(/\/+$/, "") + "/poa/v1/validators";
   const res = await fetch(url, {
     headers: { accept: "application/json" },
@@ -146,4 +146,26 @@ export async function fetchMonikers(lcdUrl: string): Promise<Map<string, LcdInfo
   });
   if (!res.ok) throw new Error(`LCD ${url}: HTTP ${res.status}`);
   return monikersFromLcd(await res.json());
+}
+
+/**
+ * Fetch the validator list, trying each LCD in order until one answers.
+ * Returns the URL that succeeded so the caller can prefer it next time; the
+ * address join already discards a wrong-chain response, so trying another
+ * provider cannot poison the mapping.
+ */
+export async function fetchMonikers(
+  lcdUrls: string[],
+  prefer?: string,
+): Promise<{ info: Map<string, LcdInfo>; url: string }> {
+  const ordered = prefer && lcdUrls.includes(prefer) ? [prefer, ...lcdUrls.filter((u) => u !== prefer)] : lcdUrls;
+  const errors: string[] = [];
+  for (const url of ordered) {
+    try {
+      return { info: await fetchMonikersFrom(url), url };
+    } catch (e) {
+      errors.push((e as Error).message);
+    }
+  }
+  throw new Error(`no LCD answered (${errors.join("; ")})`);
 }

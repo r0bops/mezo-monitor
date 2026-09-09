@@ -32,6 +32,13 @@ const ChainConfigSchema = z.object({
    */
   lcd_url: z.string().nullable().optional(),
   /**
+   * Optional LCD failover list, tried in order until one answers. Mezo's REST
+   * API (1317) is disabled by default on nodes, so public LCDs are rare — a
+   * single dead provider would otherwise freeze monikers and logos forever.
+   * Entries may be null (unset ${VAR}); see resolveLcdUrls.
+   */
+  lcd_urls: z.array(z.string().nullable().optional()).optional(),
+  /**
    * Optional failover list. When absent, the top-level rpc_url/ws_url is used
    * as a single endpoint, so existing single-node configs keep working.
    */
@@ -111,6 +118,23 @@ export function resolveEndpoints(
   }
   if (out.length === 0) {
     throw new Error(`chain ${cfg.slug}: no usable RPC endpoints (check .env)`);
+  }
+  return out;
+}
+
+/**
+ * The LCD base URLs for a chain, in failover order. `lcd_urls` wins when
+ * present; otherwise the singular `lcd_url` is used alone. An unset ${VAR}
+ * parses as null and is skipped with a warning, exactly like RPC endpoints —
+ * a missing backup should be loud, not a failed boot.
+ */
+export function resolveLcdUrls(cfg: ChainConfig): string[] {
+  const declared = cfg.lcd_urls ?? [cfg.lcd_url ?? null];
+  const out = declared.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u));
+  if (declared.length > out.length) {
+    console.warn(
+      `chain ${cfg.slug}: ${declared.length - out.length} LCD url(s) unusable (unset \${VAR}?) — skipped`,
+    );
   }
   return out;
 }

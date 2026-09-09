@@ -9,7 +9,7 @@ import {
   createDb,
   loadEnv,
 } from "@mezo/core";
-import { resolveEndpoints, type ChainConfig } from "./config";
+import { resolveEndpoints, resolveLcdUrls, type ChainConfig } from "./config";
 import { chooseActive, probe, type EndpointRow } from "./endpoints";
 import { fetchMonikers, syncMonikers } from "./monikers";
 import { parseBlock } from "./parsers";
@@ -399,15 +399,21 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
   void sweepSignatures();
 
   /**
-   * Monikers come from the chain's LCD (x/poa), not the CometBFT RPC, so this
-   * runs even while every RPC endpoint is down. Best-effort like retention:
-   * a failed fetch keeps the previous names and the interval retries.
+   * Monikers and keybase identities come from the chain's LCD (x/poa), not the
+   * CometBFT RPC, so this runs even while every RPC endpoint is down. LCDs are
+   * tried in failover order, preferring whichever answered last. Best-effort
+   * like retention: a failed fetch keeps the previous names and the interval
+   * retries.
    */
+  const lcdUrls = resolveLcdUrls(cfg);
+  let lastGoodLcd: string | undefined;
   const syncNames = async (): Promise<void> => {
-    if (!cfg.lcd_url) return;
+    if (lcdUrls.length === 0) return;
     try {
-      const updated = await syncMonikers(db, chainId, await fetchMonikers(cfg.lcd_url));
-      if (updated > 0) console.log(`monikers: updated ${updated} validator(s) from LCD`);
+      const { info, url } = await fetchMonikers(lcdUrls, lastGoodLcd);
+      lastGoodLcd = url;
+      const updated = await syncMonikers(db, chainId, info);
+      if (updated > 0) console.log(`monikers: updated ${updated} validator(s) from LCD ${url}`);
     } catch (e) {
       console.error("moniker sync failed:", (e as Error).message);
     }

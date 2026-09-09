@@ -6,12 +6,13 @@
  * derivation is tested against the chain's own addresses, not a self-consistent
  * fixture that would pass even if wrong.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@mezo/core";
 import { createTestDb, dropTestDb, seed } from "../../../api/test/setup.js";
-import { consensusAddress, monikersFromLcd, syncMonikers } from "../src/monikers.js";
+import { consensusAddress, fetchMonikers, monikersFromLcd, syncMonikers } from "../src/monikers.js";
+import { resolveLcdUrls, type ChainConfig } from "../src/config.js";
 
 // Real mainnet pubkeys → monikers, from https://mezo.api.nodeshub.online/mezo/poa/v1/validators
 const VECTORS: [string, string, string][] = [
@@ -145,5 +146,64 @@ describe("syncMonikers", () => {
 
   it("does nothing for an empty map", async () => {
     expect(await syncMonikers(db, chainId, new Map())).toBe(0);
+  });
+});
+
+describe("LCD failover", () => {
+  // fetchMonikers hits real URLs; stub the global so the ordering logic is
+  // tested against controlled failures, not provider uptime.
+  const lcdJson = {
+    validators: VECTORS.map(([pub, , moniker]) => ({
+      cons_pub_key_bech32: pub,
+      description: { moniker },
+    })),
+  };
+  const ok = (json: unknown) => ({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(json),
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("falls through a dead LCD to the next one and reports which answered", async () => {
+    const f = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("HTTP 502"))
+      .mockResolvedValueOnce(ok(lcdJson));
+    vi.stubGlobal("fetch", f);
+    const { info, url } = await fetchMonikers(["https://down.example", "https://up.example"]);
+    expect(url).toBe("https://up.example");
+    expect(info.size).toBe(3);
+    expect(f.mock.calls[0][0]).toContain("down.example");
+  });
+
+  it("prefers the last good URL when told to", async () => {
+    const f = vi.fn().mockResolvedValue(ok(lcdJson));
+    vi.stubGlobal("fetch", f);
+    const { url } = await fetchMonikers(
+      ["https://a.example", "https://b.example"],
+      "https://b.example",
+    );
+    expect(url).toBe("https://b.example");
+    expect(f.mock.calls[0][0]).toContain("b.example");
+  });
+
+  it("throws an aggregate when every LCD is down", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("HTTP 502")));
+    await expect(
+      fetchMonikers(["https://a.example", "https://b.example"]),
+    ).rejects.toThrow(/no LCD answered/);
+  });
+
+  it("resolveLcdUrls drops unset entries and honours the singular form", () => {
+    const base = { slug: "t", name: "t", chain_id: "t", family: "cometbft" as const, rpc_url: "http://x" };
+    expect(
+      resolveLcdUrls({ ...base, lcd_urls: ["https://one.example", null, undefined] } as ChainConfig),
+    ).toEqual(["https://one.example"]);
+    expect(resolveLcdUrls({ ...base, lcd_url: "https://solo.example" } as ChainConfig)).toEqual([
+      "https://solo.example",
+    ]);
+    expect(resolveLcdUrls({ ...base } as ChainConfig)).toEqual([]);
   });
 });
