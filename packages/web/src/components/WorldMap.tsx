@@ -13,7 +13,8 @@
  */
 import { useEffect, useState } from "react";
 import type { Validator } from "../api";
-import { BAD, OK, TX3, WARN, mono, sans } from "./ui";
+import { agoFrom } from "../lib";
+import { BAD, OK, StatusPill, TX, TX2, TX3, ValidatorAvatar, WARN, mono, sans } from "./ui";
 
 const W = 720;
 const H = 360;
@@ -54,6 +55,8 @@ export function statusColorOf(status: Validator["status"]): string {
 
 export function WorldMap({ validators }: { validators: Validator[] }) {
   const [paths, setPaths] = useState<string[] | null>(landPaths);
+  /** Hovered validator + cursor position (px, relative to this container). */
+  const [hover, setHover] = useState<{ v: Validator; x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (landPaths !== null) return;
@@ -83,7 +86,7 @@ export function WorldMap({ validators }: { validators: Validator[] }) {
   const cities = new Set(placed.map((v) => v.location?.city).filter(Boolean)).size;
 
   return (
-    <div>
+    <div style={{ position: "relative" }}>
       <div
         style={{
           display: "flex",
@@ -125,26 +128,89 @@ export function WorldMap({ validators }: { validators: Validator[] }) {
           const y = ((90 - l.lat!) / 180) * H;
           // Same-city validators would overlap exactly; jitter deterministically.
           const j = jitter(v.address);
+          const hovered = hover?.v.address === v.address;
           return (
-            <circle
-              key={v.address}
-              cx={x + j.dx}
-              cy={y + j.dy}
-              r={4}
-              fill={statusColorOf(v.status)}
-              fillOpacity={0.85}
-              stroke="var(--panel2)"
-              strokeWidth={1}
-            >
-              <title>
-                {`${v.moniker ?? shortAddr(v.address)}\n` +
-                  `${[l.city, l.country].filter(Boolean).join(", ")}\n` +
-                  `${l.isp ?? ""}\nlast seen ${l.last_seen ?? "—"} (${l.source === "direct" ? "direct probe" : "P2P"})`}
-              </title>
-            </circle>
+            <g key={v.address}>
+              <circle
+                cx={x + j.dx}
+                cy={y + j.dy}
+                r={hovered ? 5.5 : 4}
+                fill={statusColorOf(v.status)}
+                fillOpacity={0.9}
+                stroke="var(--panel2)"
+                strokeWidth={1}
+              />
+              {/* generous invisible hit area so dense clusters stay hoverable */}
+              <circle
+                cx={x + j.dx}
+                cy={y + j.dy}
+                r={9}
+                fill="transparent"
+                onMouseMove={(e) => {
+                  const r = (e.currentTarget.closest("svg")?.parentElement as HTMLElement)?.getBoundingClientRect();
+                  setHover({ v, x: e.clientX - (r?.left ?? 0), y: e.clientY - (r?.top ?? 0) });
+                }}
+                onMouseLeave={() => setHover(null)}
+              />
+            </g>
           );
         })}
       </svg>
+
+      {hover && (
+        <div
+          style={{
+            position: "absolute",
+            zIndex: 5,
+            pointerEvents: "none",
+            // Keep the card inside the map however close the dot is to an edge.
+            left: `min(${hover.x + 12}px, calc(100% - 246px))`,
+            top: hover.y > 130 ? undefined : `${hover.y + 12}px`,
+            bottom: hover.y > 130 ? `calc(100% - ${Math.max(hover.y - 12, 0)}px)` : undefined,
+            width: 234,
+            padding: "9px 11px",
+            borderRadius: 8,
+            background: "var(--panel2)",
+            border: "1px solid var(--line2)",
+            boxShadow: "var(--shadow)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <ValidatorAvatar
+              address={hover.v.address}
+              avatarUrl={hover.v.avatar_url}
+              title={hover.v.moniker ?? undefined}
+              size={16}
+            />
+            <span style={{ font: `600 11.5px/1 ${mono}`, color: TX, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {hover.v.moniker ?? shortAddr(hover.v.address)}
+            </span>
+            <span style={{ marginLeft: "auto", flex: "none" }}>
+              <StatusPill status={hover.v.status} />
+            </span>
+          </div>
+          <Row3 label="address" value={shortAddr(hover.v.address)} />
+          <Row3 label="location" value={[hover.v.location!.city, hover.v.location!.country].filter(Boolean).join(", ") || "—"} />
+          <Row3 label="provider" value={hover.v.location!.isp ?? "—"} />
+          <Row3 label="ip" value={hover.v.location!.ip ?? "—"} />
+          <Row3
+            label="last seen"
+            value={`${agoFrom(hover.v.location!.last_seen)} ago (${hover.v.location!.source === "direct" ? "direct" : "P2P"})`}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Row3({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", gap: 8, font: `400 10.5px/1.3 ${sans}` }}>
+      <span style={{ color: TX3, width: 52, flex: "none" }}>{label}</span>
+      <span style={{ color: TX2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</span>
     </div>
   );
 }
