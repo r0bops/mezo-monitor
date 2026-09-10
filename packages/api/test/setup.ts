@@ -71,6 +71,8 @@ export type SeedSpec = {
   count: number;
   /** Validator addresses in the set. */
   validators: string[];
+  /** Optional consensus address → moniker, as the LCD sync would store it. */
+  monikers?: Record<string, string>;
   /**
    * Per-validator heights that were missed. Anything not listed is signed.
    */
@@ -94,6 +96,7 @@ export async function seed(pool: pg.Pool, spec: SeedSpec): Promise<number> {
     validators,
     missed = {},
     absent = {},
+    monikers = {},
     holes = [],
     proposer = (h, vs) => vs[h % vs.length],
   } = spec;
@@ -110,9 +113,9 @@ export async function seed(pool: pg.Pool, spec: SeedSpec): Promise<number> {
 
   for (const [i, address] of validators.entries()) {
     await pool.query(
-      `insert into validators (chain_id, address, voting_power, is_active, first_seen_height, last_seen_height)
-       values ($1, $2, 1, true, $3, $4)`,
-      [chainId, address, head - count + 1 + i, head],
+      `insert into validators (chain_id, address, moniker, voting_power, is_active, first_seen_height, last_seen_height)
+       values ($1, $2, $3, 1, true, $4, $5)`,
+      [chainId, address, monikers[address] ?? null, head - count + 1 + i, head],
     );
   }
 

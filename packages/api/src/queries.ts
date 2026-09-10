@@ -245,6 +245,13 @@ export type ValidatorRow = {
   last_signed_height: number | null;
   missed_streak: number;
   proposed_short: number;
+  /** Observed P2P node location; all-null when never seen (see locations.ts). */
+  loc_ip: string | null;
+  loc_country_code: string | null;
+  loc_country: string | null;
+  loc_city: string | null;
+  loc_isp: string | null;
+  loc_last_seen: Date | null;
 };
 
 /**
@@ -298,11 +305,15 @@ export async function validatorMetrics(pool: pg.Pool, chainId: number): Promise<
            coalesce(a.signed_long, 0) as signed_long,
            a.last_signed_height,
            coalesce(s.missed_streak, 0) as missed_streak,
-           coalesce(p.proposed, 0) as proposed_short
+           coalesce(p.proposed, 0) as proposed_short,
+           loc.ip as loc_ip, loc.country_code as loc_country_code, loc.country as loc_country,
+           loc.city as loc_city, loc.isp as loc_isp, loc.last_seen_at as loc_last_seen
     from validators v
     left join agg a on a.address = v.address
     left join streak s on s.address = v.address
     left join prop p on p.address = v.address
+    left join validator_locations loc
+      on loc.chain_id = v.chain_id and loc.validator_address = v.address
     where v.chain_id = $1
     order by v.is_active desc, v.address
     `,

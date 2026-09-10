@@ -123,6 +123,44 @@ export const validators = pgTable(
   }),
 );
 
+/**
+ * Last-observed network location per validator.
+ *
+ * The chain carries no geography; this is derived from what the P2P network
+ * itself discloses. CometBFT peers announce a moniker + IP in the handshake,
+ * so a periodic /net_info sweep across the configured RPCs, matched by moniker
+ * onto the known validator set, yields the node's observed IP — and geo-IP
+ * yields where that node runs. Honest semantics: this is where a node with
+ * the validator's moniker was last seen peering, not a registry entry; a
+ * validator behind sentries shows its sentry. Missing rows mean "never
+ * observed", never "unknown = 0".
+ */
+export const validatorLocations = pgTable(
+  "validator_locations",
+  {
+    id: serial("id").primaryKey(),
+    chainId: integer("chain_id")
+      .notNull()
+      .references(() => chains.id, { onDelete: "cascade" }),
+    validatorAddress: text("validator_address").notNull(),
+    /** Moniker as announced in the P2P handshake (evidence for the match). */
+    monikerSeen: text("moniker_seen").notNull(),
+    ip: text("ip").notNull(),
+    countryCode: text("country_code"),
+    country: text("country"),
+    city: text("city"),
+    isp: text("isp"),
+    /** Monotonically increasing observation counter across sweeps. */
+    timesSeen: integer("times_seen").notNull().default(1),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    chainAddressUniq: uniqueIndex("validator_locations_chain_address_idx").on(t.chainId, t.validatorAddress),
+    byChain: index("validator_locations_chain_idx").on(t.chainId),
+  }),
+);
+
 /** One row per indexed block. Composite PK (chain_id, height). */
 export const blocks = pgTable(
   "blocks",

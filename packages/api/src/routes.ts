@@ -71,6 +71,20 @@ type ValidatorView = {
   missed_streak: number;
   proposer_share_1000: number | null;
   status: "active" | "degraded" | "inactive";
+  /**
+   * Where a node with this validator's moniker was last seen peering on the
+   * P2P network. All fields null when never observed — that is a fact about
+   * our observation, not a claim the validator is nowhere. This is the node's
+   * location (possibly a sentry), not the operator's registered address.
+   */
+  location: {
+    ip: string | null;
+    country_code: string | null;
+    country: string | null;
+    city: string | null;
+    isp: string | null;
+    last_seen: string | null;
+  } | null;
 };
 
 function viewValidator(
@@ -101,6 +115,16 @@ function viewValidator(
     proposer_share_1000:
       proposedTotalCount > 0 ? (v.proposed_short / proposedTotalCount) * 100 : null,
     status: !v.is_active ? "inactive" : degraded ? "degraded" : "active",
+    location: v.loc_ip
+      ? {
+          ip: v.loc_ip,
+          country_code: v.loc_country_code,
+          country: v.loc_country,
+          city: v.loc_city,
+          isp: v.loc_isp,
+          last_seen: v.loc_last_seen ? v.loc_last_seen.toISOString() : null,
+        }
+      : null,
   };
 }
 

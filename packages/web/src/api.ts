@@ -80,6 +80,19 @@ export type Validator = {
   missed_streak: number;
   proposer_share_1000: number | null;
   status: ValidatorStatus;
+  /**
+   * Where a node with this validator's moniker was last seen peering on the
+   * P2P network (observed, not registered — possibly a sentry). null = never
+   * observed, an honest unknown.
+   */
+  location: {
+    ip: string | null;
+    country_code: string | null;
+    country: string | null;
+    city: string | null;
+    isp: string | null;
+    last_seen: string | null;
+  } | null;
 };
 
 export type ValidatorList = {

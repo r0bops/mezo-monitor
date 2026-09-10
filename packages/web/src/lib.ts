@@ -38,6 +38,14 @@ export function agoFrom(iso: string | null | undefined, now: number = Date.now()
   return agoText((now - t) / 1000);
 }
 
+/** Flag emoji for a 2-letter country code ("MT" → 🇲🇹); "" when unknown. */
+export function flag(code: string | null | undefined): string {
+  if (!code || code.length !== 2) return "";
+  const base = 0x1f1e6 - 65; // 'A' → regional indicator A
+  const cc = code.toUpperCase();
+  return String.fromCodePoint(base + cc.charCodeAt(0), base + cc.charCodeAt(1));
+}
+
 /** FNV-1a — deterministic identicon seed from an address. */
 export function hash(s: string): number {
   let x = 2166136261;

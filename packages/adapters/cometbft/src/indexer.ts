@@ -12,6 +12,7 @@ import {
 import { resolveEndpoints, resolveLcdUrls, type ChainConfig } from "./config";
 import { chooseActive, probe, type EndpointRow } from "./endpoints";
 import { fetchMonikers, syncMonikers } from "./monikers";
+import { sweepLocations } from "./locations";
 import { parseBlock } from "./parsers";
 import { runRetentionSweep, DEFAULT_RETAIN_BLOCKS } from "./retention";
 import { CometbftRpc, isThrottled } from "./rpc";
@@ -34,6 +35,8 @@ const RETENTION_SWEEP_MS = Number(process.env.SIGNATURE_RETENTION_SWEEP_MS ?? 6 
 const RETAIN_BLOCKS = Number(process.env.SIGNATURE_RETAIN_BLOCKS ?? DEFAULT_RETAIN_BLOCKS);
 /** How often to refresh validator monikers from the LCD (they rarely change). */
 const MONIKER_SYNC_MS = Number(process.env.MONIKER_SYNC_INTERVAL_MS ?? 3600_000);
+/** Peers churn but node locations barely move; 15 min is plenty. */
+const LOCATION_SWEEP_MS = Number(process.env.LOCATION_SWEEP_INTERVAL_MS ?? 15 * 60_000);
 
 loadEnv();
 const { db } = createDb();
@@ -419,6 +422,22 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
     }
   };
   void syncNames();
+
+  /**
+   * Validator node locations, observed from the P2P network (see locations.ts).
+   * Swept less often than names: peers churn, but where a node runs changes
+   * rarely, and each sweep costs one /net_info per endpoint plus geo lookups
+   * only for newly seen IPs. Best-effort like everything on this path.
+   */
+  const sweep = async (): Promise<void> => {
+    try {
+      const observed = await sweepLocations(db, chainId, cfg.chain_id);
+      if (observed > 0) console.log(`locations: observed ${observed} validator(s) via P2P peers`);
+    } catch (e) {
+      console.error("location sweep failed:", (e as Error).message);
+    }
+  };
+  void sweep();
   // The periodic interval is armed only after boot completes: runIndexer can
   // reject below on an unreachable RPC and be retried every 15s, and an
   // interval armed here would leak on every failed attempt.
@@ -571,6 +590,9 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
 
   // periodic moniker refresh (the first ran before RPC access, above)
   setInterval(() => void syncNames(), MONIKER_SYNC_MS);
+
+  // periodic location sweep (the first ran before RPC access, above)
+  setInterval(() => void sweep(), LOCATION_SWEEP_MS);
 
   // backfill: backward from head to depth (archive node ⇒ no pruning boundary)
   void (async () => {

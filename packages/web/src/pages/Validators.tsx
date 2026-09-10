@@ -18,7 +18,18 @@ import {
   panel,
   sans,
 } from "../components/ui";
-import { clampPct, downloadCsv, fmt, pct, short, toCsv } from "../lib";
+
+/** Footer summary of observed node geography, honest about unobserved ones. */
+function geoSummary(validators: Validator[]): string {
+  const placed = validators.filter((v) => v.location?.country);
+  if (placed.length === 0) return "no node locations observed yet";
+  const counts = new Map<string, number>();
+  for (const v of placed) counts.set(v.location!.country!, (counts.get(v.location!.country!) ?? 0) + 1);
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([c, n]) => `${n} ${c}`);
+  const missing = validators.length - placed.length;
+  return `node locations observed: ${top.join(" · ")}${missing > 0 ? ` · ${missing} unobserved` : ""}`;
+}
+import { agoFrom, clampPct, downloadCsv, flag, fmt, pct, short, toCsv } from "../lib";
 
 const COLS = "36px 28px 300px 150px 150px 96px 160px 150px 96px";
 
@@ -256,7 +267,8 @@ export function Validators({
             Showing 1 to {rows.length} of {d.validators.length}
           </span>
           <span style={{ font: `400 10.5px/1 ${mono}`, color: TX3 }}>
-            monikers synced from the chain's x/poa module · labels are local and editable
+            monikers synced from the chain's x/poa module · labels are local and editable ·{" "}
+            {geoSummary(d.validators)}
           </span>
         </div>
       </section>
@@ -354,6 +366,21 @@ function FullRow({
               </span>
             )}
             <LabelEditor label={v.label} onLabel={onLabel} />
+            {v.location?.country && (
+              <span
+                title={`observed node location: ${[v.location.city, v.location.country].filter(Boolean).join(", ")}\n` +
+                  `ip: ${v.location.ip ?? "—"} · isp: ${v.location.isp ?? "—"}\n` +
+                  `last seen peering: ${v.location.last_seen ? agoFrom(v.location.last_seen) : "—"}\n` +
+                  `(where the node runs, not the operator's registered address; sentries show the sentry)`}
+                style={{
+                  font: `400 10px/1 ${sans}`,
+                  color: TX3,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {flag(v.location.country_code)} {v.location.city ?? v.location.country}
+              </span>
+            )}
           </div>
         </div>
       </div>
