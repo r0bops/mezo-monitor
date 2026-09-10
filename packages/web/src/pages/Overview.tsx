@@ -1,5 +1,5 @@
 /** Overview: stat tiles, validator table, signing heatmap and analytics row. */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dashboard } from "../useDashboard";
 import type { Slot, Validator } from "../api";
 import { WorldMap } from "../components/WorldMap";
@@ -48,6 +48,21 @@ export function Overview({
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [tip, setTip] = useState<{ i: number; x: number; y: number } | null>(null);
+  /**
+   * The map panel's height drives the validator table's: the table scrolls
+   * internally and both panels end level. The map's height is its own (svg
+   * aspect ratio), so measuring it here avoids a circular stretch where the
+   * taller table would instead drag the map panel down with dead space.
+   */
+  const mapRef = useRef<HTMLElement | null>(null);
+  const [mapH, setMapH] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const el = mapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => setMapH(entries[0].contentRect.height));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const loading = d.state === "loading";
   const dash = d.state === "empty" || d.state === "dberror";
@@ -120,8 +135,9 @@ export function Overview({
           onWindow={onWindow}
           tip={tip}
           setTip={setTip}
+          height={mapH}
         />
-        <section style={{ ...panel, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <section ref={mapRef} style={{ ...panel, overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
           <WorldMap validators={d.validators} />
         </section>
       </div>
@@ -408,6 +424,7 @@ function ValidatorTable({
   onWindow,
   tip,
   setTip,
+  height,
 }: {
   d: Dashboard;
   selected: string | null;
@@ -421,6 +438,8 @@ function ValidatorTable({
   onWindow: (w: number) => void;
   tip: { i: number; x: number; y: number } | null;
   setTip: (t: { i: number; x: number; y: number } | null) => void;
+  /** Matched to the map panel so both columns end level (undefined while measuring). */
+  height?: number;
 }) {
   const loading = d.state === "loading";
   const empty = d.state === "empty" || d.state === "dberror";
@@ -428,7 +447,7 @@ function ValidatorTable({
 
   return (
     <Section
-      style={{ width: 574, flex: "none" }}
+      style={{ width: 574, flex: "none", ...(height !== undefined ? { height } : {}) }}
       title="Validators"
       aside={
         <span style={{ font: `400 10.5px/1 ${mono}`, color: TX3, whiteSpace: "nowrap" }}>
@@ -456,7 +475,7 @@ function ValidatorTable({
       )}
 
       {!loading && !empty && (
-        <div style={{ display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <div
             style={{
               display: "grid",
@@ -484,6 +503,10 @@ function ValidatorTable({
             <span />
           </div>
 
+          {/* The list scrolls inside the panel so 21 rows never stretch the
+              page; the footer stays pinned and the panel ends level with the
+              map beside it (the .row flex stretches both to the same height). */}
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
           {d.validators.map((v) => (
             <Row
               key={v.address}
@@ -509,6 +532,7 @@ function ValidatorTable({
               summary={selected === v.address && d.detail?.validator.address === v.address ? (d.detail?.validator ?? null) : null}
             />
           ))}
+          </div>
 
           <div
             style={{
