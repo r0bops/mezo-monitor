@@ -1,5 +1,5 @@
 /** Overview: stat tiles, validator table, signing heatmap and analytics row. */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Dashboard } from "../useDashboard";
 import type { Slot, Validator } from "../api";
 import { WorldMap } from "../components/WorldMap";
@@ -56,9 +56,14 @@ export function Overview({
    */
   const mapRef = useRef<HTMLElement | null>(null);
   const [mapH, setMapH] = useState<number | undefined>(undefined);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = mapRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    if (!el) return;
+    // Measure once before paint (the map panel is align-self: flex-start, so
+    // its height is purely content-driven and never stretched by the table —
+    // otherwise the measurement would feed on the table's own uncapped height).
+    setMapH(el.getBoundingClientRect().height);
+    if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver((entries) => setMapH(entries[0].contentRect.height));
     ro.observe(el);
     return () => ro.disconnect();
@@ -137,7 +142,11 @@ export function Overview({
           setTip={setTip}
           height={mapH}
         />
-        <section ref={mapRef} style={{ ...panel, overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+        <section
+          ref={mapRef}
+          className="map-panel"
+          style={{ ...panel, overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}
+        >
           <WorldMap validators={d.validators} />
         </section>
       </div>

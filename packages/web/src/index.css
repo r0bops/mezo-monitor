@@ -150,6 +150,19 @@ a:hover {
   gap: 14px;
   align-items: stretch;
 }
+/* The map panel's height must stay content-driven: it is the yardstick the
+   validator table is sized to. If it stretched with the row (default), the
+   uncapped table would stretch it first and the measurement would feed on
+   itself — converging to "no cap, no scroll". */
+.row .map-panel {
+  align-self: flex-start;
+}
+@media (max-width: 980px) {
+  /* Stacked layout: cross axis is horizontal again, the map spans full width. */
+  .row .map-panel {
+    align-self: stretch;
+  }
+}
 
 @media (max-width: 980px) {
   .g4,
