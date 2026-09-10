@@ -370,7 +370,9 @@ function FullRow({
               <span
                 title={`observed node location: ${[v.location.city, v.location.country].filter(Boolean).join(", ")}\n` +
                   `ip: ${v.location.ip ?? "—"} · isp: ${v.location.isp ?? "—"}\n` +
-                  `last seen peering: ${v.location.last_seen ? agoFrom(v.location.last_seen) : "—"}\n` +
+                  `last seen: ${v.location.last_seen ? agoFrom(v.location.last_seen) : "—"} ` +
+                  `(via ${v.location.source === "direct" ? "direct node probe" : "P2P peers"}, ` +
+                  `${v.location.ips_seen} distinct ip${v.location.ips_seen === 1 ? "" : "s"} seen)\n` +
                   `(where the node runs, not the operator's registered address; sentries show the sentry)`}
                 style={{
                   font: `400 10px/1 ${sans}`,

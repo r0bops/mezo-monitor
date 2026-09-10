@@ -18,10 +18,13 @@
  *   still recorded with its IP.
  */
 import { eq, sql } from "drizzle-orm";
-import { chainEndpoints, validatorLocations, validators } from "@mezo/core";
+import { chainEndpoints, validatorLocationIps, validatorLocations, validators } from "@mezo/core";
 import type { Database } from "@mezo/core";
 
 const NET_INFO_TIMEOUT_MS = 8_000;
+/** A validator missing from the peer view gets one short, polite attempt at
+ *  its own RPC — this is a fallback probe, not a scan. */
+const DIRECT_PROBE_TIMEOUT_MS = 3_000;
 const GEO_BATCH_URL = "http://ip-api.com/batch";
 /** ip-api free tier: 15 batch requests/min, 100 IPs per batch. One sweep of
  * ~50 peers costs one request; only IPs not seen before are looked up. */
@@ -55,6 +58,32 @@ export async function fetchPeers(rpcUrl: string): Promise<PeerInfo[]> {
   });
   if (!res.ok) throw new Error(`net_info ${url}: HTTP ${res.status}`);
   return peersFromNetInfo(await res.json());
+}
+
+/** /status node_info from a raw IP — the fields a direct probe needs. */
+export type NodeStatus = { moniker: string; network: string };
+
+/**
+ * Probe a node's own RPC (`http://ip:26657/status`) and, if it answers,
+ * return what it calls itself. Identity is confirmed by the caller comparing
+ * the moniker — an answering node that names itself differently must NOT be
+ * recorded as the validator (the IP may have been reassigned).
+ */
+export async function probeNode(ip: string): Promise<NodeStatus | null> {
+  try {
+    const res = await fetch(`http://${ip}:26657/status`, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(DIRECT_PROBE_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const ni = ((await res.json()) as { result?: { node_info?: Record<string, unknown> } })?.result?.node_info;
+    const moniker = ni?.moniker;
+    const network = ni?.network;
+    if (typeof moniker !== "string" || typeof network !== "string") return null;
+    return { moniker: moniker.trim(), network };
+  } catch {
+    return null; // closed port, firewall, timeout — all just "no answer"
+  }
 }
 
 export type GeoInfo = { countryCode: string | null; country: string | null; city: string | null; isp: string | null };
@@ -127,7 +156,7 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
   }
 
   // Latest sighting per validator across all endpoints this sweep.
-  const sightings = new Map<string, { moniker: string; ip: string }>();
+  const sightings = new Map<string, { moniker: string; ip: string; source: "peer" | "direct" }>();
   for (const e of endpoints) {
     let peers: PeerInfo[];
     try {
@@ -139,10 +168,9 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
       if (p.network !== chainNetwork) continue; // wrong chain — cannot happen on our endpoints, but cheap
       const address = byMoniker.get(p.moniker.toLowerCase());
       if (address === undefined) continue;
-      sightings.set(address, { moniker: p.moniker, ip: p.ip });
+      sightings.set(address, { moniker: p.moniker, ip: p.ip, source: "peer" });
     }
   }
-  if (sightings.size === 0) return 0;
 
   const existing = await db
     .select({
@@ -152,6 +180,29 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
     .from(validatorLocations)
     .where(eq(validatorLocations.chainId, chainId));
   const knownIp = new Map(existing.map((r) => [r.address, r.ip]));
+
+  // Fallback: a validator the peer view missed gets one direct probe of its
+  // last-known node. The probe must name itself with the validator's moniker
+  // and our chain before it counts — an answering stranger means the IP was
+  // reassigned, and the old sighting stands (with a warning) rather than
+  // being silently overwritten or deleted.
+  for (const v of vset) {
+    if (!v.moniker || sightings.has(v.address)) continue;
+    const lastIp = knownIp.get(v.address);
+    if (!lastIp) continue; // never observed — nothing to probe
+    const status = await probeNode(lastIp);
+    if (!status) continue; // node not answering RPC; next sweep tries again
+    if (status.network !== chainNetwork || status.moniker.toLowerCase() !== v.moniker.toLowerCase()) {
+      console.warn(
+        `locations: last-known ip ${lastIp} for "${v.moniker}" now answers as ` +
+          `"${status.moniker}" (${status.network}) — keeping previous sighting`,
+      );
+      continue;
+    }
+    sightings.set(v.address, { moniker: status.moniker, ip: lastIp, source: "direct" });
+  }
+
+  if (sightings.size === 0) return 0;
 
   // Geo lookups only for IPs we have never placed (per process) or whose IP changed.
   const needGeo = [...new Set(
@@ -177,6 +228,7 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
         city: g.city,
         isp: g.isp,
         timesSeen: 1,
+        source: s.source,
         firstSeenAt: now,
         lastSeenAt: now,
       })
@@ -186,22 +238,50 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
           monikerSeen: s.moniker,
           ip: s.ip,
           ...(sameIp
-            ? { timesSeen: bump(), lastSeenAt: now }
+            ? { timesSeen: bump(validatorLocations.timesSeen), source: s.source, lastSeenAt: now }
             : {
                 countryCode: g.countryCode,
                 country: g.country,
                 city: g.city,
                 isp: g.isp,
-                timesSeen: bump(),
+                timesSeen: bump(validatorLocations.timesSeen),
+                source: s.source,
                 lastSeenAt: now,
               }),
+        },
+      });
+    // History: one row per (validator, ip) ever observed; an IP change is
+    // recorded, not overwritten.
+    await db
+      .insert(validatorLocationIps)
+      .values({
+        chainId,
+        validatorAddress: address,
+        ip: s.ip,
+        countryCode: g.countryCode,
+        country: g.country,
+        city: g.city,
+        isp: g.isp,
+        timesSeen: 1,
+        firstSeenAt: now,
+        lastSeenAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [validatorLocationIps.chainId, validatorLocationIps.validatorAddress, validatorLocationIps.ip],
+        set: {
+          countryCode: g.countryCode,
+          country: g.country,
+          city: g.city,
+          isp: g.isp,
+          timesSeen: bump(validatorLocationIps.timesSeen),
+          lastSeenAt: now,
         },
       });
   }
   return sightings.size;
 }
 
-/** times_seen = validator_locations.times_seen + 1, in place in the upsert. */
-function bump() {
-  return sql`${validatorLocations.timesSeen} + 1`;
+/** times_seen = <table>.times_seen + 1, in place in an upsert set clause. */
+function bump(col: typeof validatorLocations.timesSeen) {
+  return sql`${col} + 1`;
 }

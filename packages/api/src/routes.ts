@@ -84,6 +84,11 @@ type ValidatorView = {
     city: string | null;
     isp: string | null;
     last_seen: string | null;
+    /** "peer" = seen in an RPC's peer list; "direct" = the node's own RPC
+     *  answered after it fell out of the peer view. */
+    source: string | null;
+    /** Distinct IPs ever observed for this validator. */
+    ips_seen: number;
   } | null;
 };
 
@@ -123,6 +128,8 @@ function viewValidator(
           city: v.loc_city,
           isp: v.loc_isp,
           last_seen: v.loc_last_seen ? v.loc_last_seen.toISOString() : null,
+          source: v.loc_source,
+          ips_seen: v.loc_ips_seen ?? 1,
         }
       : null,
   };

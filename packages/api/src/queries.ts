@@ -252,6 +252,8 @@ export type ValidatorRow = {
   loc_city: string | null;
   loc_isp: string | null;
   loc_last_seen: Date | null;
+  loc_source: string | null;
+  loc_ips_seen: number | null;
 };
 
 /**
@@ -307,7 +309,10 @@ export async function validatorMetrics(pool: pg.Pool, chainId: number): Promise<
            coalesce(s.missed_streak, 0) as missed_streak,
            coalesce(p.proposed, 0) as proposed_short,
            loc.ip as loc_ip, loc.country_code as loc_country_code, loc.country as loc_country,
-           loc.city as loc_city, loc.isp as loc_isp, loc.last_seen_at as loc_last_seen
+           loc.city as loc_city, loc.isp as loc_isp, loc.last_seen_at as loc_last_seen,
+           loc.source as loc_source,
+           (select count(*)::int from validator_location_ips h
+             where h.chain_id = v.chain_id and h.validator_address = v.address) as loc_ips_seen
     from validators v
     left join agg a on a.address = v.address
     left join streak s on s.address = v.address

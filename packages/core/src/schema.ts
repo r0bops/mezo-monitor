@@ -152,12 +152,43 @@ export const validatorLocations = pgTable(
     isp: text("isp"),
     /** Monotonically increasing observation counter across sweeps. */
     timesSeen: integer("times_seen").notNull().default(1),
+    /** How this sighting arrived: "peer" via /net_info, "direct" by probing
+     *  the node's own RPC after it fell out of the peer view. */
+    source: text("source").notNull().default("peer"),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     chainAddressUniq: uniqueIndex("validator_locations_chain_address_idx").on(t.chainId, t.validatorAddress),
     byChain: index("validator_locations_chain_idx").on(t.chainId),
+  }),
+);
+
+/**
+ * Every IP ever observed per validator — the history behind the latest-only
+ * `validator_locations` row. An IP change (failover, migration, provider
+ * switch) is a signal worth keeping, not overwriting.
+ */
+export const validatorLocationIps = pgTable(
+  "validator_location_ips",
+  {
+    id: serial("id").primaryKey(),
+    chainId: integer("chain_id")
+      .notNull()
+      .references(() => chains.id, { onDelete: "cascade" }),
+    validatorAddress: text("validator_address").notNull(),
+    ip: text("ip").notNull(),
+    countryCode: text("country_code"),
+    country: text("country"),
+    city: text("city"),
+    isp: text("isp"),
+    timesSeen: integer("times_seen").notNull().default(1),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    chainAddressIpUniq: uniqueIndex("validator_location_ips_key_idx").on(t.chainId, t.validatorAddress, t.ip),
+    byChain: index("validator_location_ips_chain_idx").on(t.chainId),
   }),
 );
 

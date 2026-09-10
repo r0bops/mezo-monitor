@@ -92,6 +92,8 @@ export type Validator = {
     city: string | null;
     isp: string | null;
     last_seen: string | null;
+    source: string | null;
+    ips_seen: number;
   } | null;
 };
 
