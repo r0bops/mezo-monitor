@@ -150,6 +150,9 @@ export const validatorLocations = pgTable(
     country: text("country"),
     city: text("city"),
     isp: text("isp"),
+    /** Coordinates from geo-IP (equirectangular degrees) for the map view. */
+    lat: doublePrecision("lat"),
+    lon: doublePrecision("lon"),
     /** Monotonically increasing observation counter across sweeps. */
     timesSeen: integer("times_seen").notNull().default(1),
     /** How this sighting arrived: "peer" via /net_info, "direct" by probing
@@ -182,6 +185,8 @@ export const validatorLocationIps = pgTable(
     country: text("country"),
     city: text("city"),
     isp: text("isp"),
+    lat: doublePrecision("lat"),
+    lon: doublePrecision("lon"),
     timesSeen: integer("times_seen").notNull().default(1),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),

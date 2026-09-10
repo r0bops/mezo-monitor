@@ -30,6 +30,7 @@ function geoSummary(validators: Validator[]): string {
   return `node locations observed: ${top.join(" · ")}${missing > 0 ? ` · ${missing} unobserved` : ""}`;
 }
 import { agoFrom, clampPct, downloadCsv, flag, fmt, pct, short, toCsv } from "../lib";
+import { WorldMap } from "../components/WorldMap";
 
 const COLS = "36px 28px 300px 150px 150px 96px 160px 150px 96px";
 
@@ -208,6 +209,10 @@ export function Validators({
           </button>
         </div>
       </div>
+
+      <section style={{ ...panel, overflow: "hidden", marginBottom: 16 }}>
+        <WorldMap validators={d.validators} />
+      </section>
 
       <section style={{ ...panel, overflow: "hidden" }}>
         <div

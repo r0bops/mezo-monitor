@@ -64,6 +64,13 @@
       "when": 1789009944096,
       "tag": "0008_warm_shotgun",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789015820654,
+      "tag": "0009_bored_mister_fear",
+      "breakpoints": true
     }
   ]
 }

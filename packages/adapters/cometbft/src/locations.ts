@@ -18,6 +18,7 @@
  *   still recorded with its IP.
  */
 import { eq, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { chainEndpoints, validatorLocationIps, validatorLocations, validators } from "@mezo/core";
 import type { Database } from "@mezo/core";
 
@@ -86,7 +87,14 @@ export async function probeNode(ip: string): Promise<NodeStatus | null> {
   }
 }
 
-export type GeoInfo = { countryCode: string | null; country: string | null; city: string | null; isp: string | null };
+export type GeoInfo = {
+  countryCode: string | null;
+  country: string | null;
+  city: string | null;
+  isp: string | null;
+  lat: number | null;
+  lon: number | null;
+};
 
 /** In-memory geo cache; IPs are stable enough that one lookup per process is fine. */
 const geoCache = new Map<string, GeoInfo>();
@@ -106,7 +114,7 @@ export async function geolocate(ips: string[]): Promise<Map<string, GeoInfo>> {
   }
   if (missing.length === 0) return out;
   try {
-    const res = await fetch(GEO_BATCH_URL + "?fields=status,countryCode,country,city,isp", {
+    const res = await fetch(GEO_BATCH_URL + "?fields=status,countryCode,country,city,isp,lat,lon", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(missing.slice(0, 100)),
@@ -116,6 +124,7 @@ export async function geolocate(ips: string[]): Promise<Map<string, GeoInfo>> {
     const rows = (await res.json()) as Record<string, unknown>[];
     for (const [i, ip] of missing.slice(0, 100).entries()) {
       const r = rows[i];
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
       const geo: GeoInfo =
         r && r.status === "success"
           ? {
@@ -123,13 +132,16 @@ export async function geolocate(ips: string[]): Promise<Map<string, GeoInfo>> {
               country: typeof r.country === "string" ? r.country : null,
               city: typeof r.city === "string" ? r.city : null,
               isp: typeof r.isp === "string" ? r.isp : null,
+              lat: num(r.lat),
+              lon: num(r.lon),
             }
-          : { countryCode: null, country: null, city: null, isp: null };
+          : { countryCode: null, country: null, city: null, isp: null, lat: null, lon: null };
       geoCache.set(ip, geo);
       out.set(ip, geo);
     }
   } catch {
-    for (const ip of missing) out.set(ip, { countryCode: null, country: null, city: null, isp: null });
+    for (const ip of missing)
+      out.set(ip, { countryCode: null, country: null, city: null, isp: null, lat: null, lon: null });
   }
   return out;
 }
@@ -176,10 +188,12 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
     .select({
       address: validatorLocations.validatorAddress,
       ip: validatorLocations.ip,
+      lat: validatorLocations.lat,
     })
     .from(validatorLocations)
     .where(eq(validatorLocations.chainId, chainId));
   const knownIp = new Map(existing.map((r) => [r.address, r.ip]));
+  const storedLat = new Map(existing.map((r) => [r.address, r.lat]));
 
   // Fallback: a validator the peer view missed gets one direct probe of its
   // last-known node. The probe must name itself with the validator's moniker
@@ -204,18 +218,28 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
 
   if (sightings.size === 0) return 0;
 
-  // Geo lookups only for IPs we have never placed (per process) or whose IP changed.
+  // Geo lookups only for IPs we have never placed (per process), whose IP
+  // changed, or whose stored row predates coordinates.
   const needGeo = [...new Set(
     [...sightings.entries()]
-      .filter(([addr, s]) => geoCache.get(s.ip) === undefined || knownIp.get(addr) !== s.ip)
+      .filter(
+        ([addr, s]) =>
+          geoCache.get(s.ip) === undefined || knownIp.get(addr) !== s.ip || storedLat.get(addr) === null,
+      )
       .map(([, s]) => s.ip),
   )];
   const geo = await geolocate(needGeo);
 
   const now = new Date();
   for (const [address, s] of sightings) {
-    const g = geo.get(s.ip) ?? geoCache.get(s.ip) ?? { countryCode: null, country: null, city: null, isp: null };
+    const g =
+      geo.get(s.ip) ??
+      geoCache.get(s.ip) ??
+      { countryCode: null, country: null, city: null, isp: null, lat: null, lon: null };
     const sameIp = knownIp.get(address) === s.ip;
+    // Refresh geo fields on an unchanged IP too when the stored row predates
+    // coordinates (lat null but geo now has them) — one-time backfill.
+    const refreshGeo = !sameIp || (storedLat.get(address) === null && g.lat !== null);
     await db
       .insert(validatorLocations)
       .values({
@@ -227,6 +251,8 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
         country: g.country,
         city: g.city,
         isp: g.isp,
+        lat: g.lat,
+        lon: g.lon,
         timesSeen: 1,
         source: s.source,
         firstSeenAt: now,
@@ -237,17 +263,19 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
         set: {
           monikerSeen: s.moniker,
           ip: s.ip,
-          ...(sameIp
-            ? { timesSeen: bump(validatorLocations.timesSeen), source: s.source, lastSeenAt: now }
-            : {
+          ...(refreshGeo
+            ? {
                 countryCode: g.countryCode,
                 country: g.country,
                 city: g.city,
                 isp: g.isp,
+                lat: g.lat,
+                lon: g.lon,
                 timesSeen: bump(validatorLocations.timesSeen),
                 source: s.source,
                 lastSeenAt: now,
-              }),
+              }
+            : { timesSeen: bump(validatorLocations.timesSeen), source: s.source, lastSeenAt: now }),
         },
       });
     // History: one row per (validator, ip) ever observed; an IP change is
@@ -262,6 +290,8 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
         country: g.country,
         city: g.city,
         isp: g.isp,
+        lat: g.lat,
+        lon: g.lon,
         timesSeen: 1,
         firstSeenAt: now,
         lastSeenAt: now,
@@ -273,6 +303,8 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
           country: g.country,
           city: g.city,
           isp: g.isp,
+          lat: g.lat,
+          lon: g.lon,
           timesSeen: bump(validatorLocationIps.timesSeen),
           lastSeenAt: now,
         },
@@ -282,6 +314,6 @@ export async function sweepLocations(db: Database, chainId: number, chainNetwork
 }
 
 /** times_seen = <table>.times_seen + 1, in place in an upsert set clause. */
-function bump(col: typeof validatorLocations.timesSeen) {
+function bump(col: AnyPgColumn) {
   return sql`${col} + 1`;
 }

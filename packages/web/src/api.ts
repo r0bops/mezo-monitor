@@ -91,6 +91,8 @@ export type Validator = {
     country: string | null;
     city: string | null;
     isp: string | null;
+    lat: number | null;
+    lon: number | null;
     last_seen: string | null;
     source: string | null;
     ips_seen: number;

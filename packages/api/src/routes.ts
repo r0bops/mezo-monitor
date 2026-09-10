@@ -83,6 +83,9 @@ type ValidatorView = {
     country: string | null;
     city: string | null;
     isp: string | null;
+    /** Equirectangular degrees for the map view. */
+    lat: number | null;
+    lon: number | null;
     last_seen: string | null;
     /** "peer" = seen in an RPC's peer list; "direct" = the node's own RPC
      *  answered after it fell out of the peer view. */
@@ -127,6 +130,8 @@ function viewValidator(
           country: v.loc_country,
           city: v.loc_city,
           isp: v.loc_isp,
+          lat: v.loc_lat,
+          lon: v.loc_lon,
           last_seen: v.loc_last_seen ? v.loc_last_seen.toISOString() : null,
           source: v.loc_source,
           ips_seen: v.loc_ips_seen ?? 1,
