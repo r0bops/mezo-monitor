@@ -17,7 +17,8 @@ import { BAD, OK, TX3, WARN, mono, sans } from "./ui";
 
 const W = 720;
 const H = 360;
-const GEOJSON_URL = "https://cdn.jsdelivr.net/gh/holtzy/D3-graph-gallery@master/DATA/world.geojson";
+/** Same-origin proxy (the public site's CSP allows no third-party connect-src). */
+const GEOJSON_URL = "/api/v1/geo/land";
 
 /** Fetched once per session; a failed fetch is permanent for the session. */
 let landPaths: string[] | null = null;
@@ -74,7 +75,10 @@ export function WorldMap({ validators }: { validators: Validator[] }) {
     };
   }, []);
 
-  const placed = validators.filter((v) => v.location?.lat !== null && v.location?.lon !== null);
+  const placed = validators.filter(
+    (v): v is Validator & { location: NonNullable<Validator["location"]> } =>
+      v.location !== null && v.location.lat !== null && v.location.lon !== null,
+  );
   const countries = new Set(placed.map((v) => v.location?.country).filter(Boolean)).size;
   const cities = new Set(placed.map((v) => v.location?.city).filter(Boolean)).size;
 

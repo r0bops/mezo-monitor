@@ -28,7 +28,7 @@ import {
   type ChainRow,
   type ValidatorRow,
 } from "./queries.js";
-import { CacheMap } from "./cache.js";
+import { Cached, CacheMap } from "./cache.js";
 import { createAvatarResolver, withAvatars } from "./avatars.js";
 
 /** Lag beyond which the indexer is considered stalled rather than merely behind. */
@@ -144,6 +144,28 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   const { pool } = deps;
   /** Keybase avatar per validator identity; day-TTL, fail-soft to null. */
   const resolveAvatar = createAvatarResolver();
+
+  /**
+   * Landmass GeoJSON for the map, proxied same-origin: the public site's CSP
+   * allows no third-party connect-src, and this way one server-side fetch
+   * (day-TTL, coalesced) serves every visitor. Unreachable upstream is a 502
+   * — the map degrades to its graticule rather than failing the page.
+   */
+  const LAND_URL = "https://cdn.jsdelivr.net/gh/holtzy/D3-graph-gallery@master/DATA/world.geojson";
+  const landCache = new Cached(async () => {
+    const res = await fetch(LAND_URL, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) throw new Error(`geojson upstream: HTTP ${res.status}`);
+    return await res.json();
+  }, 24 * 60 * 60 * 1000);
+  app.get("/api/v1/geo/land", async (_req, reply) => {
+    try {
+      return await landCache.get();
+    } catch (e) {
+      app.log.warn({ err: e }, "land geojson fetch failed");
+      reply.code(502);
+      return { error: "landmass source unreachable" };
+    }
+  });
 
   // Shared across the validator, validator-set and metrics routes so one
   // refresh cycle costs a single scan rather than five.
