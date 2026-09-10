@@ -1,7 +1,8 @@
 /** Overview: stat tiles, validator table, signing heatmap and analytics row. */
 import { useMemo, useState } from "react";
 import type { Dashboard } from "../useDashboard";
-import type { Validator } from "../api";
+import type { Slot, Validator } from "../api";
+import { WorldMap } from "../components/WorldMap";
 import {
   BAD,
   BRAND,
@@ -115,17 +116,14 @@ export function Overview({
           copied={copied}
           onCopy={onCopy}
           backfill={backfill}
-        />
-        <DetailPanel
-          d={d}
           win={win}
           onWindow={onWindow}
-          copied={copied}
-          onCopy={onCopy}
           tip={tip}
           setTip={setTip}
-          backfill={backfill}
         />
+        <section style={{ ...panel, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <WorldMap validators={d.validators} />
+        </section>
       </div>
 
       <div className="g4" style={{ alignItems: "stretch" }}>
@@ -406,6 +404,10 @@ function ValidatorTable({
   copied,
   onCopy,
   backfill,
+  win,
+  onWindow,
+  tip,
+  setTip,
 }: {
   d: Dashboard;
   selected: string | null;
@@ -415,6 +417,10 @@ function ValidatorTable({
   copied: string | null;
   onCopy: (v: string) => void;
   backfill: boolean;
+  win: number;
+  onWindow: (w: number) => void;
+  tip: { i: number; x: number; y: number } | null;
+  setTip: (t: { i: number; x: number; y: number } | null) => void;
 }) {
   const loading = d.state === "loading";
   const empty = d.state === "empty" || d.state === "dberror";
@@ -490,6 +496,17 @@ function ValidatorTable({
               onCopy={onCopy}
               backfill={backfill}
               longTarget={d.net?.long_window.target ?? 10_000}
+              win={win}
+              onWindow={onWindow}
+              tip={tip}
+              setTip={setTip}
+              loading={loading}
+              slots={
+                selected === v.address && d.detail?.validator.address === v.address
+                  ? (d.detail?.slots ?? [])
+                  : []
+              }
+              summary={selected === v.address && d.detail?.validator.address === v.address ? (d.detail?.validator ?? null) : null}
             />
           ))}
 
@@ -539,6 +556,13 @@ function Row({
   onCopy,
   backfill,
   longTarget,
+  win,
+  onWindow,
+  tip,
+  setTip,
+  loading,
+  slots,
+  summary,
 }: {
   v: Validator;
   selected: boolean;
@@ -549,6 +573,13 @@ function Row({
   onCopy: (v: string) => void;
   backfill: boolean;
   longTarget: number;
+  win: number;
+  onWindow: (w: number) => void;
+  tip: { i: number; x: number; y: number } | null;
+  setTip: (t: { i: number; x: number; y: number } | null) => void;
+  loading: boolean;
+  slots: Slot[];
+  summary: Validator | null;
 }) {
   const deg = v.status === "degraded";
   const partial = v.slots_10000 < longTarget;
@@ -565,7 +596,10 @@ function Row({
       }}
     >
       <div
-        onClick={() => onSelect(v.address)}
+        onClick={() => {
+          onSelect(v.address);
+          if (!open) onToggle(); // expanding the dropdown needs the detail loaded
+        }}
         style={{
           display: "grid",
           gridTemplateColumns: COLS,
@@ -653,11 +687,67 @@ function Row({
       </div>
 
       {open && (
-        <div style={{ display: "flex", gap: 26, padding: "0 16px 14px 46px", background: "var(--panel2)" }}>
-          <Detail label="First seen" value={fmt(v.first_seen_height)} />
-          <Detail label="Last seen" value={fmt(v.last_seen_height)} />
-          <Detail label="Voting power" value={fmt(v.voting_power)} />
-          <Detail label="Pub key" value={v.pub_key ?? "—"} truncate />
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 11,
+            padding: "4px 16px 14px 46px",
+            background: "var(--panel2)",
+            borderBottom: "1px solid var(--line)",
+          }}
+        >
+          <div style={{ display: "flex", gap: 26, flexWrap: "wrap" }}>
+            <Detail label="First seen" value={fmt(v.first_seen_height)} />
+            <Detail label="Last seen" value={fmt(v.last_seen_height)} />
+            <Detail label="Voting power" value={fmt(v.voting_power)} />
+            <Detail label="Pub key" value={v.pub_key ?? "—"} truncate />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <Label>Signing history · {fmt(win)} blocks</Label>
+            <div
+              style={{
+                display: "flex",
+                gap: 2,
+                padding: 2,
+                borderRadius: 8,
+                background: "var(--panel)",
+                border: "1px solid var(--line)",
+              }}
+            >
+              {WINDOWS.map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => onWindow(w)}
+                  style={{
+                    padding: "4px 9px",
+                    borderRadius: 6,
+                    border: "none",
+                    cursor: "pointer",
+                    font: `600 10.5px/1 ${mono}`,
+                    background: win === w ? BRAND : "transparent",
+                    color: win === w ? "#fff" : TX2,
+                  }}
+                >
+                  {fmt(w)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <SigningHistoryGrid slots={slots} loading={loading} tip={tip} setTip={setTip} />
+          {summary && (
+            <div style={{ display: "flex", gap: 1, background: "var(--line)", borderRadius: 8, overflow: "hidden" }}>
+              <Summary label="Uptime (1,000)" value={pct(summary.uptime_1000, 2)} color={metricColor(summary.uptime_1000)} />
+              <Summary label={`Uptime (${fmt(longTarget)})`} value={pct(summary.uptime_10000, 2)} color={metricColor(summary.uptime_10000)} />
+              <Summary
+                label="Missed Streak"
+                value={String(summary.missed_streak)}
+                color={summary.missed_streak >= 3 ? BAD : summary.missed_streak > 0 ? WARN : TX}
+              />
+              <Summary label="Proposer Share" value={pct(summary.proposer_share_1000)} color={TX} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -685,34 +775,25 @@ function Detail({ label, value, truncate }: { label: string; value: string; trun
 
 /* ── signing heatmap panel ──────────────────────────────────────────────── */
 
-function DetailPanel({
-  d,
-  win,
-  onWindow,
-  copied,
-  onCopy,
+/**
+ * The per-validator signing-slot heatmap, rendered inside an expanded row.
+ * Same rendering rules as before the move: green = signed (fading with age),
+ * red = missed, gray = not in the set; hover shows height + verdict.
+ */
+function SigningHistoryGrid({
+  slots,
+  loading,
   tip,
   setTip,
-  backfill,
 }: {
-  d: Dashboard;
-  win: number;
-  onWindow: (w: number) => void;
-  copied: string | null;
-  onCopy: (v: string) => void;
+  slots: Slot[];
+  loading: boolean;
   tip: { i: number; x: number; y: number } | null;
   setTip: (t: { i: number; x: number; y: number } | null) => void;
-  backfill: boolean;
 }) {
-  const loading = d.state === "loading";
-  const empty = d.state === "empty" || d.state === "dberror";
-  const dberr = d.state === "dberror";
-  const sel = d.detail?.validator ?? null;
-  const slots = d.detail?.slots ?? [];
-  const blockscout = d.net?.chain.blockscout_url;
-
-  // Rows fade with age so the newest activity reads first, as in the mockup.
-  const rows = Math.max(1, Math.ceil(win / 50));
+  const empty = slots.length === 0 && !loading;
+  // Rows fade with age so the newest activity reads first.
+  const rows = Math.max(1, Math.ceil(slots.length / 50));
   const fadeMax = rows <= 2 ? 16 : 58;
   const cells = slots.map((s, i) => {
     const row = Math.floor(i / 50);
@@ -727,225 +808,107 @@ function DetailPanel({
       slot: s,
     };
   });
-
   const missed = slots.filter((s) => s.signed === false).length;
   const na = slots.filter((s) => s.signed === null).length;
-  const longTarget = d.net?.long_window.target ?? 10_000;
-  const partial = sel !== null && sel.slots_10000 < longTarget;
   const tipCell = tip ? cells[tip.i] : null;
 
+  if (empty) {
+    return (
+      <EmptyState
+        dashed
+        title="Awaiting selection"
+        text="Signing slots load when this row is selected and blocks are ingested."
+      />
+    );
+  }
+
   return (
-    <section style={{ ...panel, flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 14,
-          padding: "14px 18px 13px",
-          borderBottom: "1px solid var(--line)",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {sel ? (
-              <>
-                <ValidatorAvatar address={sel.address} avatarUrl={sel.avatar_url} title={sel.moniker ?? undefined} size={20} />
-                <span style={{ font: `600 14px/1 ${mono}`, color: TX, letterSpacing: "-.01em" }}>
-                  {short(sel.address)}
-                </span>
-                <CopyButton value={sel.address} copied={copied === sel.address} onCopy={onCopy} size={20} />
-                <StatusPill status={sel.status} />
-              </>
-            ) : (
-              <span style={{ font: `600 14px/1 ${mono}`, color: TX3 }}>No validator selected</span>
-            )}
-          </div>
-          {blockscout && (
-            <a
-              href={blockscout}
-              target="_blank"
-              rel="noreferrer"
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8 }}>
+      {loading && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(50,1fr)", gap: 3 }}>
+          {new Array(200).fill(0).map((_, i) => (
+            <span
+              key={i}
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                font: `500 11.5px/1 ${sans}`,
-                alignSelf: "flex-start",
+                aspectRatio: "1",
+                borderRadius: 2,
+                background: "linear-gradient(90deg,var(--skel) 25%,var(--line) 50%,var(--skel) 75%)",
+                backgroundSize: "400% 100%",
+                animation: "shim 1.6s linear infinite",
               }}
-            >
-              View details
-              <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M7 4h9v9M16 4L5 15" />
-              </svg>
-            </a>
-          )}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            gap: 2,
-            padding: 2,
-            borderRadius: 8,
-            background: "var(--panel2)",
-            border: "1px solid var(--line)",
-            flex: "none",
-          }}
-        >
-          {WINDOWS.map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => onWindow(w)}
-              style={{
-                padding: "5px 10px",
-                borderRadius: 6,
-                border: "none",
-                cursor: "pointer",
-                font: `600 11px/1 ${mono}`,
-                background: win === w ? BRAND : "transparent",
-                color: win === w ? "#fff" : TX2,
-              }}
-            >
-              {fmt(w)}
-            </button>
+            />
           ))}
         </div>
-      </div>
-
-      <div style={{ padding: "16px 18px 0", display: "flex", flexDirection: "column", gap: 11, flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <Label>Signing history · {fmt(win)} blocks</Label>
-          <span style={{ font: `400 10.5px/1 ${mono}`, color: TX3 }}>newest top-left</span>
-        </div>
-
-        {loading && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(50,1fr)", gap: 3 }}>
-            {new Array(200).fill(0).map((_, i) => (
-              <span
-                key={i}
-                style={{
-                  aspectRatio: "1",
-                  borderRadius: 2,
-                  background: "linear-gradient(90deg,var(--skel) 25%,var(--line) 50%,var(--skel) 75%)",
-                  backgroundSize: "400% 100%",
-                  animation: "shim 1.6s linear infinite",
-                }}
-              />
+      )}
+      {!loading && (
+        <>
+          <div
+            onMouseOver={(e) => {
+              const el = e.target as HTMLElement;
+              const i = el.getAttribute?.("data-i");
+              if (i == null) return;
+              setTip({ i: +i, x: el.offsetLeft + el.offsetWidth / 2, y: el.offsetTop - 6 });
+            }}
+            onMouseLeave={() => setTip(null)}
+            style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(50,1fr)", gap: 3 }}
+          >
+            {cells.map((c, i) => (
+              <span key={i} data-i={i} style={{ aspectRatio: "1", borderRadius: 2, background: c.bg }} />
             ))}
-          </div>
-        )}
-
-        {empty && (
-          <EmptyState
-            dashed
-            title={dberr ? "No data available" : "Awaiting RPC"}
-            text={
-              dberr
-                ? "Signing history cannot be read while the database is unreachable."
-                : "Signing slots appear once blocks are ingested from the RPC endpoint."
-            }
-          />
-        )}
-
-        {!loading && !empty && (
-          <>
-            <div
-              onMouseOver={(e) => {
-                const el = e.target as HTMLElement;
-                const i = el.getAttribute?.("data-i");
-                if (i == null) return;
-                setTip({ i: +i, x: el.offsetLeft + el.offsetWidth / 2, y: el.offsetTop - 6 });
-              }}
-              onMouseLeave={() => setTip(null)}
-              style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(50,1fr)", gap: 3 }}
-            >
-              {cells.map((c, i) => (
-                <span key={i} data-i={i} style={{ aspectRatio: "1", borderRadius: 2, background: c.bg }} />
-              ))}
-              {tip && tipCell && (
-                <div
+            {tip && tipCell && (
+              <div
+                style={{
+                  position: "absolute",
+                  zIndex: 5,
+                  pointerEvents: "none",
+                  left: tip.x,
+                  top: tip.y,
+                  transform: "translate(-50%,-100%)",
+                  padding: "7px 9px",
+                  borderRadius: 8,
+                  background: "var(--panel2)",
+                  border: "1px solid var(--line2)",
+                  boxShadow: "var(--shadow)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span style={{ font: `600 10.5px/1 ${mono}`, color: TX }}>
+                  height {fmt(tipCell.slot.height)}
+                </span>
+                <span
                   style={{
-                    position: "absolute",
-                    zIndex: 5,
-                    pointerEvents: "none",
-                    left: tip.x,
-                    top: tip.y,
-                    transform: "translate(-50%,-100%)",
-                    padding: "7px 9px",
-                    borderRadius: 8,
-                    background: "var(--panel2)",
-                    border: "1px solid var(--line2)",
-                    boxShadow: "var(--shadow)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
-                    whiteSpace: "nowrap",
+                    font: `600 10px/1 ${sans}`,
+                    color: tipCell.slot.signed === null ? TX3 : tipCell.slot.signed ? OK : BAD,
                   }}
                 >
-                  <span style={{ font: `600 10.5px/1 ${mono}`, color: TX }}>
-                    height {fmt(tipCell.slot.height)}
-                  </span>
-                  <span
-                    style={{
-                      font: `600 10px/1 ${sans}`,
-                      color: tipCell.slot.signed === null ? TX3 : tipCell.slot.signed ? OK : BAD,
-                    }}
-                  >
-                    {tipCell.slot.signed === null
-                      ? "Not in validator set"
-                      : tipCell.slot.signed
-                        ? "Signed"
-                        : "Missed"}
-                  </span>
-                  <span style={{ font: `400 10px/1 ${sans}`, color: TX3 }}>
-                    {agoFrom(tipCell.slot.time)} ago
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 16, paddingTop: 2 }}>
-              <Legend color={OK} label="Signed" />
-              <Legend color={BAD} label="Missed" />
-              <Legend color="var(--line2)" label="Not in set" />
-              <span style={{ marginLeft: "auto", font: `400 10.5px/1 ${mono}`, color: TX3 }}>
-                {missed || na
-                  ? `${missed} missed · ${na} not in set`
-                  : `${slots.length} / ${slots.length} signed`}
-              </span>
-            </div>
-          </>
-        )}
-
-        <div
-          style={{
-            marginTop: "auto",
-            display: "grid",
-            gridTemplateColumns: "repeat(4,1fr)",
-            gap: 1,
-            background: "var(--line)",
-            borderTop: "1px solid var(--line)",
-            marginLeft: -18,
-            marginRight: -18,
-          }}
-        >
-          <Summary label="Uptime (1,000)" value={pct(sel?.uptime_1000 ?? null, 2)} color={metricColor(sel?.uptime_1000 ?? null)} />
-          <Summary
-            label={`Uptime (${fmt(longTarget)})`}
-            value={partial ? `${fmt(sel?.slots_10000 ?? 0)} / ${fmt(longTarget)}` : pct(sel?.uptime_10000 ?? null, 2)}
-            color={partial ? WARN : metricColor(sel?.uptime_10000 ?? null)}
-            badge={partial || backfill ? "PARTIAL WINDOW" : undefined}
-          />
-          <Summary
-            label="Missed Streak"
-            value={sel ? String(sel.missed_streak) : "—"}
-            color={sel && sel.missed_streak >= 3 ? BAD : sel && sel.missed_streak > 0 ? WARN : TX}
-          />
-          <Summary label="Proposer Share" value={pct(sel?.proposer_share_1000 ?? null)} color={TX} />
-        </div>
-      </div>
-    </section>
+                  {tipCell.slot.signed === null
+                    ? "Not in validator set"
+                    : tipCell.slot.signed
+                      ? "Signed"
+                      : "Missed"}
+                </span>
+                <span style={{ font: `400 10px/1 ${sans}`, color: TX3 }}>
+                  {agoFrom(tipCell.slot.time)} ago
+                </span>
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, paddingTop: 2 }}>
+            <Legend color={OK} label="Signed" />
+            <Legend color={BAD} label="Missed" />
+            <Legend color="var(--line2)" label="Not in set" />
+            <span style={{ marginLeft: "auto", font: `400 10.5px/1 ${mono}`, color: TX3 }}>
+              {missed || na
+                ? `${missed} missed · ${na} not in set`
+                : `${slots.length} / ${slots.length} signed`}
+            </span>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
