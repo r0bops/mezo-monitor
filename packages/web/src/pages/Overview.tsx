@@ -457,6 +457,10 @@ function ValidatorTable({
   return (
     <Section
       style={{ width: 574, flex: "none", ...(height !== undefined ? { height } : {}) }}
+      // Section wraps children in a body div; without this it is height:auto,
+      // grows to the full list height and clips — the scroll chain below never
+      // receives the section's fixed height.
+      bodyStyle={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
       title="Validators"
       aside={
         <span style={{ font: `400 10.5px/1 ${mono}`, color: TX3, whiteSpace: "nowrap" }}>
