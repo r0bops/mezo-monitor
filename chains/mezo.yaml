@@ -35,16 +35,18 @@ lcd_urls:
 # on an interval and switches automatically when the active one degrades; a
 # node pinned from the dashboard overrides that until unpinned.
 # Endpoints whose ${VAR} is unset are skipped with a warning.
+# Labels carry the operator's name, not the role: "mezo-archive-01" is the
+# node's own moniker (/status), the others are named for the provider domain.
 endpoints:
-  - label: primary
+  - label: mezo-archive-01
     rpc_url: ${MEZO_RPC_URL}
     ws_url: ${MEZO_RPC_WS_URL}
     priority: 10
-  - label: backup
+  - label: Lavender.Five
     rpc_url: ${MEZO_RPC_URL_2}
     ws_url: ${MEZO_RPC_WS_URL_2}
     priority: 20
-  - label: backup-2
+  - label: NodesHub
     rpc_url: ${MEZO_RPC_URL_3}
     ws_url: ${MEZO_RPC_WS_URL_3}
     priority: 30
