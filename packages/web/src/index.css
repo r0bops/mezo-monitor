@@ -157,6 +157,25 @@ a:hover {
 .row .map-panel {
   align-self: flex-start;
 }
+/* Summary tiles stay pinned while the rest of the page scrolls. The negative
+   margins + matching padding stretch the sticky box over the grid's 14px gaps
+   so scrolling content never peeks through above or between the tiles. */
+.tiles-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--canvas);
+  padding: 14px 0;
+  margin: -14px 0;
+}
+@media (max-width: 980px) {
+  /* Stacked tiles are too tall to pin; let them scroll with the page. */
+  .tiles-sticky {
+    position: static;
+    padding: 0;
+    margin: 0;
+  }
+}
 @media (max-width: 980px) {
   /* Stacked layout: cross axis is horizontal again, the map spans full width. */
   .row .map-panel {

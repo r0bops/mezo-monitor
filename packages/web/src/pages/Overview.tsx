@@ -97,7 +97,7 @@ export function Overview({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {loading ? (
-        <div className="g5">
+        <div className="g5 tiles-sticky">
           {[0, 1, 2, 3, 4].map((i) => (
             <div
               key={i}
@@ -110,7 +110,7 @@ export function Overview({
           ))}
         </div>
       ) : (
-        <div className="g5">
+        <div className="g5 tiles-sticky">
           <HeightTile
             dash={dash}
             stopped={stopped}
