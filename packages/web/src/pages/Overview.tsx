@@ -418,7 +418,8 @@ function padStart<T>(arr: T[], n: number, filler: T): T[] {
 
 /* ── validator table ────────────────────────────────────────────────────── */
 
-const COLS = "28px 132px 80px 80px 48px 80px 64px 24px";
+// Address column fits avatar + moniker + short address + copy button.
+const COLS = "28px 216px 80px 80px 48px 80px 64px 24px";
 
 function ValidatorTable({
   d,
@@ -456,7 +457,7 @@ function ValidatorTable({
 
   return (
     <Section
-      style={{ width: 574, flex: "none", ...(height !== undefined ? { height } : {}) }}
+      style={{ width: 652, flex: "none", ...(height !== undefined ? { height } : {}) }}
       // Section wraps children in a body div; without this it is height:auto,
       // grows to the full list height and clips — the scroll chain below never
       // receives the section's fixed height.
@@ -649,7 +650,26 @@ function Row({
         <span style={{ ...cell, fontSize: 11, color: TX3 }}>{v.rank}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
           <ValidatorAvatar address={v.address} avatarUrl={v.avatar_url} title={v.moniker ?? undefined} size={16} />
-          <span style={{ ...cell, color: selected ? TX : TX2, letterSpacing: "-.01em", whiteSpace: "nowrap" }}>
+          {v.moniker && (
+            <span
+              title={`moniker (chain): ${v.moniker}`}
+              style={{
+                font: `500 11px/1 ${sans}`,
+                color: selected ? TX : TX2,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                maxWidth: 118,
+                flex: "none",
+              }}
+            >
+              {v.moniker}
+            </span>
+          )}
+          <span
+            style={{ ...cell, fontSize: 10.5, color: TX3, letterSpacing: "-.01em", whiteSpace: "nowrap" }}
+            title={v.address}
+          >
             {short(v.address)}
           </span>
           <CopyButton value={v.address} copied={copied} onCopy={onCopy} />
