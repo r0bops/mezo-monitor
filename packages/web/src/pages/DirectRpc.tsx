@@ -169,15 +169,17 @@ function RpcConsole({ base }: { base: string }) {
     setResult(null);
   }, [path]);
 
-  const execute = async () => {
+  /** Core runner shared by the Execute button and the quick-read buttons. */
+  const run = async (path: string, rawValues: Record<string, string>) => {
     setBusy(true);
+    const method = METHODS.find((m) => m.path === path);
     const params: Record<string, string> = {};
-    for (const p of spec.params) {
-      const v = (values[p.key] ?? "").trim();
+    for (const p of method?.params ?? []) {
+      const v = (rawValues[p.key] ?? "").trim();
       if (v !== "") params[p.key] = encodeParam(p.kind, v);
     }
-    const r = await rpcCallRaw(base, spec.path, params);
-    setHistory((h) => [{ path: spec.path, ok: r.state === "ok", ms: r.latencyMs }, ...h].slice(0, 6));
+    const r = await rpcCallRaw(base, path, params);
+    setHistory((h) => [{ path, ok: r.state === "ok", ms: r.latencyMs }, ...h].slice(0, 6));
     setResult(
       r.state === "ok"
         ? { state: "ok", latencyMs: r.latencyMs, body: r.data }
@@ -185,6 +187,19 @@ function RpcConsole({ base }: { base: string }) {
     );
     setBusy(false);
   };
+
+  const execute = () => run(spec.path, values);
+
+  /** One-click reads: the handful of calls that answer "how is the node". */
+  const QUICK: { label: string; path: string; values?: Record<string, string> }[] = [
+    { label: "Status", path: "/status" },
+    { label: "Latest block", path: "/block" },
+    { label: "Validators", path: "/validators", values: { page: "1", per_page: "30" } },
+    { label: "Peers", path: "/net_info" },
+    { label: "Mempool", path: "/unconfirmed_txs", values: { limit: "30" } },
+    { label: "Consensus", path: "/consensus_state" },
+    { label: "Health", path: "/health" },
+  ];
 
   let pretty = "";
   let truncated = false;
@@ -206,6 +221,32 @@ function RpcConsole({ base }: { base: string }) {
       }
     >
       <div style={{ padding: "13px 16px", display: "flex", flexDirection: "column", gap: 11 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ font: `600 9.5px/1 ${sans}`, letterSpacing: ".06em", color: TX3, marginRight: 2 }}>
+            QUICK
+          </span>
+          {QUICK.map((q) => (
+            <button
+              key={q.label}
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setPath(q.path);
+                setValues(q.values ?? {});
+                void run(q.path, q.values ?? {});
+              }}
+              style={{
+                ...btn,
+                padding: "6px 11px",
+                font: `600 10.5px/1 ${sans}`,
+                opacity: busy ? 0.5 : 1,
+              }}
+            >
+              {q.label}
+            </button>
+          ))}
+        </div>
+
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <select
             value={spec.path}
