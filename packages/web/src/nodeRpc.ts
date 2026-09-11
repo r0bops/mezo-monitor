@@ -101,6 +101,32 @@ export async function probeNode(base: string): Promise<NodeProbe> {
   };
 }
 
+/**
+ * One raw read-only call for the RPC console: returns the node's JSON answer
+ * as-is, with the node's own jsonrpc error (if any) surfaced as a message.
+ */
+export async function rpcCallRaw(
+  base: string,
+  path: string,
+  params: Record<string, string> = {},
+): Promise<RpcResult<unknown>> {
+  const filtered: Record<string, string> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== "") filtered[k] = v;
+  }
+  const r = await rpcGet(base, path, (j) => j ?? null, filtered);
+  if (r.state !== "ok") return r;
+  const err = (r.data as { error?: { message?: string; data?: string } } | null)?.error;
+  if (err) {
+    return {
+      state: "error",
+      latencyMs: r.latencyMs,
+      error: err.message ?? "node returned an error" + (err.data ? `: ${err.data}` : ""),
+    };
+  }
+  return r;
+}
+
 export type ValidatorInfo = {
   address: string;
   pubKeyType?: string;

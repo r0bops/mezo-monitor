@@ -81,7 +81,11 @@ fastify.addHook("onSend", async (req, reply, payload) => {
   reply.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
   reply.header(
     "content-security-policy",
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
+    // connect-src https: lets the Direct RPC console query any CORS-enabled
+    // https node straight from the visitor's browser (polkadot.js-style);
+    // plain-http nodes stay blocked by mixed-content rules. img-src https:
+    // allows the validator logos Keybase serves once identities sync.
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:",
   );
   return payload;
 });

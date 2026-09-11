@@ -11,6 +11,7 @@ import {
   fetchNetInfo,
   fetchValidators,
   probeNode,
+  rpcCallRaw,
   type BlockInfo,
   type NetInfo,
   type NodeProbe,
@@ -34,6 +35,323 @@ import { agoFrom, fmt, short } from "../lib";
 const REFRESH_MS = 10_000;
 const BLOCK_COUNT = 10;
 const STORAGE_KEY = "mezo-rpc-url";
+
+/* ── RPC console ───────────────────────────────────────────────────────────
+   polkadot.js-style: pick a call, fill the parameters, execute. Read-only by
+   design — broadcast/send endpoints are deliberately not in the catalog. */
+
+type ParamKind = "num" | "str" | "bool" | "numOrLatest";
+type ParamSpec = { key: string; label: string; kind: ParamKind; placeholder?: string; hint?: string };
+type MethodSpec = { group: string; path: string; params: ParamSpec[]; note?: string };
+
+const METHODS: MethodSpec[] = [
+  { group: "Node", path: "/status", params: [] },
+  { group: "Node", path: "/health", params: [] },
+  { group: "Node", path: "/net_info", params: [] },
+  {
+    group: "Node",
+    path: "/genesis",
+    params: [],
+    note: "the full genesis document — the answer is very large",
+  },
+  { group: "Node", path: "/abci_info", params: [] },
+  {
+    group: "Blocks",
+    path: "/block",
+    params: [{ key: "height", label: "height", kind: "numOrLatest", placeholder: "latest" }],
+  },
+  {
+    group: "Blocks",
+    path: "/block_results",
+    params: [{ key: "height", label: "height", kind: "numOrLatest", placeholder: "latest" }],
+  },
+  {
+    group: "Blocks",
+    path: "/commit",
+    params: [{ key: "height", label: "height", kind: "numOrLatest", placeholder: "latest" }],
+  },
+  {
+    group: "Blocks",
+    path: "/blockchain",
+    params: [
+      { key: "minHeight", label: "min height", kind: "num", placeholder: "1" },
+      { key: "maxHeight", label: "max height", kind: "num", placeholder: "10" },
+    ],
+  },
+  {
+    group: "Validators",
+    path: "/validators",
+    params: [
+      { key: "height", label: "height", kind: "numOrLatest", placeholder: "latest" },
+      { key: "page", label: "page", kind: "num", placeholder: "1" },
+      { key: "per_page", label: "per page", kind: "num", placeholder: "30" },
+    ],
+  },
+  {
+    group: "Mempool",
+    path: "/unconfirmed_txs",
+    params: [{ key: "limit", label: "limit", kind: "num", placeholder: "30" }],
+  },
+  { group: "Mempool", path: "/num_unconfirmed_txs", params: [] },
+  {
+    group: "Transactions",
+    path: "/tx",
+    params: [
+      { key: "hash", label: "hash", kind: "str", placeholder: "0x…", hint: "transaction hash" },
+      { key: "prove", label: "prove", kind: "bool", placeholder: "false" },
+    ],
+  },
+  {
+    group: "Transactions",
+    path: "/tx_search",
+    params: [
+      {
+        key: "query",
+        label: "query",
+        kind: "str",
+        placeholder: "tx.height=11695926",
+        hint: "CometBFT query syntax",
+      },
+      { key: "prove", label: "prove", kind: "bool", placeholder: "false" },
+      { key: "page", label: "page", kind: "num", placeholder: "1" },
+      { key: "per_page", label: "per page", kind: "num", placeholder: "30" },
+    ],
+  },
+  { group: "Consensus", path: "/consensus_state", params: [] },
+  { group: "Consensus", path: "/dump_consensus_state", params: [] },
+  {
+    group: "Raw ABCI",
+    path: "/abci_query",
+    params: [
+      { key: "path", label: "path", kind: "str", placeholder: "/cosmos.bank.v1beta1..." },
+      { key: "data", label: "data", kind: "str", placeholder: "0x", hint: "hex-encoded request" },
+      { key: "height", label: "height", kind: "numOrLatest", placeholder: "latest" },
+      { key: "prove", label: "prove", kind: "bool", placeholder: "false" },
+    ],
+    note: "raw module queries — Mezo's x/poa does not expose a plain ABCI path",
+  },
+];
+
+/** Encode one parameter for CometBFT's GET convention: strings (and the
+ *  literal "latest") are JSON-quoted, numbers and bools pass raw. */
+function encodeParam(kind: ParamKind, value: string): string {
+  if (kind === "str") return JSON.stringify(value);
+  if (kind === "numOrLatest") return /^-?\d+$/.test(value) ? value : JSON.stringify(value);
+  return value;
+}
+
+const CONSOLE_METHOD_KEY = "mezo-rpc-console-method";
+
+function RpcConsole({ base }: { base: string }) {
+  const [path, setPath] = useState<string>(() => {
+    try {
+      return localStorage.getItem(CONSOLE_METHOD_KEY) ?? "/status";
+    } catch {
+      return "/status";
+    }
+  });
+  const spec = METHODS.find((m) => m.path === path) ?? METHODS[0];
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [result, setResult] = useState<
+    { state: "ok" | "error" | "blocked"; latencyMs: number; body?: unknown; error?: string } | null
+  >(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [history, setHistory] = useState<{ path: string; ok: boolean; ms: number }[]>([]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CONSOLE_METHOD_KEY, path);
+    } catch {
+      /* storage unavailable — the console still works */
+    }
+    setValues({});
+    setResult(null);
+  }, [path]);
+
+  const execute = async () => {
+    setBusy(true);
+    const params: Record<string, string> = {};
+    for (const p of spec.params) {
+      const v = (values[p.key] ?? "").trim();
+      if (v !== "") params[p.key] = encodeParam(p.kind, v);
+    }
+    const r = await rpcCallRaw(base, spec.path, params);
+    setHistory((h) => [{ path: spec.path, ok: r.state === "ok", ms: r.latencyMs }, ...h].slice(0, 6));
+    setResult(
+      r.state === "ok"
+        ? { state: "ok", latencyMs: r.latencyMs, body: r.data }
+        : { state: r.state, latencyMs: r.latencyMs, error: r.error },
+    );
+    setBusy(false);
+  };
+
+  let pretty = "";
+  let truncated = false;
+  if (result?.state === "ok") {
+    pretty = JSON.stringify(result.body, null, 2) ?? "null";
+    if (pretty.length > 200_000) {
+      pretty = pretty.slice(0, 200_000);
+      truncated = true;
+    }
+  }
+
+  return (
+    <Section
+      title="RPC console"
+      aside={
+        <span style={{ font: `400 10.5px/1 ${mono}`, color: TX3 }}>
+          read-only · browser → node, no monitor in the middle
+        </span>
+      }
+    >
+      <div style={{ padding: "13px 16px", display: "flex", flexDirection: "column", gap: 11 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select
+            value={spec.path}
+            onChange={(e) => setPath(e.target.value)}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid var(--line)",
+              background: "var(--panel2)",
+              font: `500 11.5px/1 ${mono}`,
+              color: TX,
+            }}
+          >
+            {[...new Set(METHODS.map((m) => m.group))].map((group) => (
+              <optgroup key={group} label={group}>
+                {METHODS.filter((x) => x.group === group).map((x) => (
+                  <option key={x.path} value={x.path}>
+                    {x.path}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {spec.params.map((p) => (
+            <label
+              key={p.key}
+              title={p.hint ?? p.label}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
+              <span style={{ font: `500 10px/1 ${sans}`, color: TX3, whiteSpace: "nowrap" }}>
+                {p.label}
+              </span>
+              <input
+                value={values[p.key] ?? ""}
+                placeholder={p.placeholder}
+                spellCheck={false}
+                onChange={(e) => setValues((v) => ({ ...v, [p.key]: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && !busy && void execute()}
+                style={{
+                  width: p.kind === "str" ? 220 : 110,
+                  padding: "7px 9px",
+                  borderRadius: 8,
+                  border: "1px solid var(--line)",
+                  background: "var(--panel2)",
+                  font: `400 11px/1 ${mono}`,
+                  color: TX,
+                }}
+              />
+            </label>
+          ))}
+          <button type="button" onClick={() => void execute()} disabled={busy} style={btn}>
+            {busy ? "…" : "Execute"}
+          </button>
+        </div>
+
+        {(spec.note || spec.params.some((p) => p.hint)) && (
+          <span style={{ font: `400 10.5px/1.4 ${sans}`, color: TX3 }}>
+            {spec.note ?? spec.params.find((p) => p.hint)?.hint}
+          </span>
+        )}
+
+        {result && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span
+              style={{
+                ...chip,
+                background: result.state === "ok" ? "var(--okSoft)" : "var(--badSoft)",
+                color: result.state === "ok" ? OK : BAD,
+              }}
+            >
+              {result.state === "ok" ? "200" : result.state === "blocked" ? "blocked" : "error"} ·{" "}
+              {result.latencyMs}ms
+            </span>
+            {result.state === "ok" && (
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(pretty);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1400);
+                }}
+                style={{ ...btn, padding: "5px 10px" }}
+              >
+                {copied ? "Copied" : "Copy JSON"}
+              </button>
+            )}
+            {history.length > 0 && (
+              <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {history.map((h, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setPath(h.path)}
+                    style={{
+                      ...btn,
+                      padding: "4px 8px",
+                      font: `500 9.5px/1 ${mono}`,
+                      color: h.ok ? OK : BAD,
+                      borderColor: "var(--line)",
+                    }}
+                  >
+                    {h.path} · {h.ms}ms
+                  </button>
+                ))}
+              </span>
+            )}
+          </div>
+        )}
+
+        {result?.state === "ok" ? (
+          <pre
+            style={{
+              margin: 0,
+              padding: "12px 14px",
+              borderRadius: 10,
+              border: "1px solid var(--line)",
+              background: "var(--panel2)",
+              maxHeight: 420,
+              overflow: "auto",
+              font: `400 10.5px/1.55 ${mono}`,
+              color: TX2,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {pretty}
+            {truncated ? "\n\n… truncated — the full answer is larger than the display limit" : ""}
+          </pre>
+        ) : result ? (
+          <div style={{ ...banner, border: "1px solid var(--line)", background: "var(--badSoft)" }}>
+            <span style={{ font: `600 12px/1.3 ${sans}`, color: BAD }}>
+              {result.state === "blocked" ? "Browser blocked the request" : "Node answered with an error"}
+            </span>
+            <span style={{ font: `400 11px/1.5 ${sans}`, color: TX2 }}>{result.error}</span>
+          </div>
+        ) : (
+          <span style={{ font: `400 11px/1.5 ${sans}`, color: TX3 }}>
+            Pick a call, fill the parameters (blank = the node's default) and execute — the request
+            goes straight from this browser to {base || "the node"}. Broadcast/send endpoints are
+            intentionally absent: this console is read-only, like the rest of the tool.
+          </span>
+        )}
+      </div>
+    </Section>
+  );
+}
 
 type PanelState = {
   probe: NodeProbe | null;
@@ -65,10 +383,6 @@ export function DirectRpc({ d }: { d: Dashboard }) {
   const suggested = endpoints
     .map((e) => e.rpc_url)
     .filter((u): u is string => Boolean(u));
-  /** Name of the configured endpoint matching the entered URL, if any. */
-  const matched =
-    endpoints.find((e) => e.rpc_url && e.rpc_url.replace(/\/+$/, "") === url.replace(/\/+$/, "")) ??
-    null;
   const [url, setUrl] = useState<string>(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) ?? suggested[0] ?? "";
@@ -76,6 +390,12 @@ export function DirectRpc({ d }: { d: Dashboard }) {
       return suggested[0] ?? "";
     }
   });
+  /** Name of the configured endpoint matching the entered URL, if any. Must
+   *  sit after the url useState: it reads url, and reading it earlier throws
+   *  (TDZ) — a crash that only fired once endpoint data had loaded. */
+  const matched =
+    endpoints.find((e) => e.rpc_url && e.rpc_url.replace(/\/+$/, "") === url.replace(/\/+$/, "")) ??
+    null;
   const [live, setLive] = useState(true);
   const [tick, setTick] = useState(0);
   const [state, setState] = useState<PanelState>(EMPTY);
@@ -202,6 +522,8 @@ export function DirectRpc({ d }: { d: Dashboard }) {
           </span>
         </div>
       )}
+
+      <RpcConsole base={url} />
 
       <div className="g2" style={{ alignItems: "start" }}>
         <KeyValue
