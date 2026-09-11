@@ -53,7 +53,15 @@ export function statusColorOf(status: Validator["status"]): string {
   return status === "active" ? OK : status === "degraded" ? WARN : BAD;
 }
 
-export function WorldMap({ validators }: { validators: Validator[] }) {
+export function WorldMap({
+  validators,
+  maxSvgHeight,
+}: {
+  validators: Validator[];
+  /** Clamp the map so the whole Overview fold fits short viewports; the
+   *  viewBox letterboxes inside the smaller box instead of clipping. */
+  maxSvgHeight?: number;
+}) {
   const [paths, setPaths] = useState<string[] | null>(landPaths);
   /** Hovered validator + cursor position (px, relative to this container). */
   const [hover, setHover] = useState<{ v: Validator; x: number; y: number } | null>(null);
@@ -109,7 +117,12 @@ export function WorldMap({ validators }: { validators: Validator[] }) {
           <span><Dot c={BAD} /> inactive</span>
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }} role="img" aria-label="validator node locations world map">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ width: "100%", height: "auto", display: "block", ...(maxSvgHeight !== undefined ? { maxHeight: maxSvgHeight } : {}) }}
+        role="img"
+        aria-label="validator node locations world map"
+      >
         <rect width={W} height={H} fill="var(--panel2)" rx={6} />
         {/* graticule: always drawn, the landmasses sit on top when available */}
         {Array.from({ length: 11 }, (_, i) => (

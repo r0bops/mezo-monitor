@@ -1,5 +1,5 @@
 /** Overview: stat tiles, validator table, signing heatmap and analytics row. */
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Dashboard } from "../useDashboard";
 import type { Slot, Validator } from "../api";
 import { WorldMap } from "../components/WorldMap";
@@ -68,6 +68,52 @@ export function Overview({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  /**
+   * Fold cap: on short viewports the analytics row (.g4) must fit below the
+   * tiles and the validators/map row without scrolling. The map svg is the
+   * only flexible piece, so it shrinks by exactly the measured overhang —
+   * no estimated budgets, which drifted from the real header heights. The
+   * formula is viewport-invariant (shrinking the svg by N moves .g4 up by N),
+   * so a couple of rAF passes settle it; a map floor of 200px keeps it usable,
+   * below that the page simply scrolls as it always did.
+   */
+  const g4Ref = useRef<HTMLDivElement | null>(null);
+  const [svgCap, setSvgCap] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    let raf = 0;
+    let runs = 0;
+    const step = () => {
+      const svg = mapRef.current?.querySelector("svg");
+      const g4 = g4Ref.current;
+      if (svg && g4) {
+        const rect = svg.getBoundingClientRect();
+        const currentH = rect.height;
+        const natural = rect.width / 2;
+        const overhang = g4.getBoundingClientRect().bottom + window.scrollY - window.innerHeight;
+        // Symmetric: shrinking by the overhang fits exactly; a negative
+        // overhang grows the map back toward its natural size (released at
+        // natural). 140px floor — below that the page scrolls instead.
+        const target = currentH - overhang;
+        if (target >= natural - 1) {
+          if (svgCap !== undefined) setSvgCap(undefined);
+        } else if (target >= 140) {
+          setSvgCap(Math.floor(target));
+        }
+      }
+      if (++runs < 4) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    const onResize = () => {
+      runs = 0;
+      raf = requestAnimationFrame(step);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [d.state, d.validators.length, svgCap]);
 
   const loading = d.state === "loading";
   const dash = d.state === "empty" || d.state === "dberror";
@@ -147,11 +193,11 @@ export function Overview({
           className="map-panel"
           style={{ ...panel, overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}
         >
-          <WorldMap validators={d.validators} />
+          <WorldMap validators={d.validators} maxSvgHeight={svgCap} />
         </section>
       </div>
 
-      <div className="g4" style={{ alignItems: "stretch" }}>
+      <div className="g4" ref={g4Ref} style={{ alignItems: "stretch" }}>
         <NetworkHealth d={d} dash={dash} />
         <MiniChart
           title="Block Time"
