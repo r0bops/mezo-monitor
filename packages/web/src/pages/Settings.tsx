@@ -46,6 +46,7 @@ export function Settings({
         ["Set poll interval", `${Math.round(cfg.indexer.poll_interval_ms / 1000)}s`],
         ["Database", cfg.indexer.database],
         ["Uptime windows", `${fmt(cfg.windows.short)} / ${fmt(cfg.windows.long)} blocks`],
+        ["Monitor", "mezo-monitor v0.1.0"],
       ]
     : [];
 

@@ -322,7 +322,6 @@ function Sidebar({
   go: (p: PageId) => void;
   d: ReturnType<typeof useDashboard>;
 }) {
-  const ix = indexerBadge(d);
   return (
     <aside className="side">
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 4px 22px" }}>
@@ -367,73 +366,8 @@ function Sidebar({
           </a>
         ))}
       </nav>
-
-      <div className="sidefoot" style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: 18 }}>
-        <div style={{ borderTop: "1px solid var(--line)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 9 }}>
-          {d.net?.chain.capabilities.poa && (
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                alignSelf: "flex-start",
-                padding: "4px 8px",
-                borderRadius: 6,
-                background: "var(--brandSoft)",
-                border: "1px solid var(--line)",
-              }}
-            >
-              <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="var(--brand)" strokeWidth="1.8" strokeLinecap="round">
-                <path d="M10 2.5l6 3v5c0 4-2.8 6.5-6 7.5-3.2-1-6-3.5-6-7.5v-5z" />
-              </svg>
-              <span style={{ font: `600 9.5px/1 ${sans}`, letterSpacing: ".06em", color: "var(--brand)" }}>
-                PROOF-OF-AUTHORITY
-              </span>
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "0 2px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  flex: "none",
-                  background: ix.color,
-                  animation: ix.pulse ? "bp 2.4s ease-in-out infinite" : "none",
-                }}
-              />
-              <span style={{ font: `600 10.5px/1 ${sans}`, color: ix.color }}>{ix.label}</span>
-            </div>
-            <span style={{ font: `400 10px/1.4 ${mono}`, color: TX3 }}>{ix.sub}</span>
-            <span style={{ font: `400 10px/1.4 ${mono}`, color: TX3 }}>mezo-monitor v0.1.0</span>
-          </div>
-        </div>
-      </div>
     </aside>
   );
-}
-
-function indexerBadge(d: ReturnType<typeof useDashboard>) {
-  switch (d.state) {
-    case "dberror":
-      return { color: BAD, label: "No database", sub: d.error ?? "API unreachable", pulse: false };
-    case "stopped":
-      return {
-        color: BAD,
-        label: "Stopped",
-        sub: `${fmt(d.net?.indexer_lag_blocks ?? null)} blocks behind`,
-        pulse: false,
-      };
-    case "empty":
-      return { color: WARN, label: "Connecting", sub: "awaiting first block", pulse: false };
-    case "loading":
-      return { color: WARN, label: "Starting", sub: "loading…", pulse: false };
-    case "backfill":
-      return { color: OK, label: "Live", sub: "backfilling window", pulse: true };
-    default:
-      return { color: OK, label: "Live", sub: "polling · block stream", pulse: true };
-  }
 }
 
 function bannerFor(d: ReturnType<typeof useDashboard>) {
