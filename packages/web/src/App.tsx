@@ -97,7 +97,6 @@ export default function App() {
   }, []);
 
   const net = d.net;
-  const evmId = net?.chain.chain_id.match(/_(\d+)-/)?.[1] ?? null;
   const verdict = verdictFor(d);
   const banner = bannerFor(d);
 
@@ -129,35 +128,6 @@ export default function App() {
               <h1 style={{ margin: 0, font: `600 21px/1.15 ${sans}`, letterSpacing: "-.01em", color: TX }}>
                 {TITLES[page]}
               </h1>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 9,
-                  whiteSpace: "nowrap",
-                  font: `400 11.5px/1 ${mono}`,
-                  color: TX2,
-                }}
-              >
-                <span>{net?.chain.chain_id ?? "—"}</span>
-                <Dot />
-                <span>
-                  {net?.chain.family === "cometbft" ? "CometBFT" : (net?.chain.family ?? "—")}
-                  {net?.chain.capabilities.poa ? " PoA" : ""}
-                </span>
-                {net?.node_version && (
-                  <>
-                    <Dot />
-                    <span>v{net.node_version}</span>
-                  </>
-                )}
-                {evmId && (
-                  <>
-                    <Dot />
-                    <span>EVM {evmId}</span>
-                  </>
-                )}
-              </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
               <EndpointSwitcher d={d} />
@@ -337,10 +307,6 @@ export default function App() {
 
     </div>
   );
-}
-
-function Dot() {
-  return <span style={{ color: TX3 }}>·</span>;
 }
 
 function Divider() {
