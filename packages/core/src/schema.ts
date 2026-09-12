@@ -103,6 +103,12 @@ export const validators = pgTable(
      */
     identity: text("identity"),
     /**
+     * Operator logo URL synced from Matchbox's public validator profiles
+     * (keyed by vote-gauge address; see matchbox.ts). Used when no Keybase
+     * identity resolves — third-party, best-effort, identicon fallback below.
+     */
+    avatarUrl: text("avatar_url"),
+    /**
      * Local, operator-assigned identity. Mezo is PoA with no staking module, so
      * the chain may never expose monikers; a human label ("Ours", "Broker X")
      * is the only way to answer "is mine healthy?".

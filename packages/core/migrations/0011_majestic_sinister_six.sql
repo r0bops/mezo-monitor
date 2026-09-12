@@ -1,0 +1,1 @@
+ALTER TABLE "validators" ADD COLUMN "avatar_url" text;

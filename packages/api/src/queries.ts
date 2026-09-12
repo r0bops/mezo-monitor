@@ -248,6 +248,7 @@ export type PipelineBlock = {
   proposer_address: string | null;
   moniker: string | null;
   identity: string | null;
+  avatar_url: string | null;
   tx_count: number | null;
   signature_count: number | null;
   validator_count: number | null;
@@ -347,7 +348,7 @@ export async function validatorMetrics(pool: pg.Pool, chainId: number): Promise<
       where b.chain_id = $1 and b.height > head.h - $2 and b.proposer_address is not null
       group by b.proposer_address
     )
-    select v.address, v.moniker, v.identity, v.label, v.watched, v.pub_key, v.voting_power, v.is_active,
+    select v.address, v.moniker, v.identity, v.avatar_url, v.label, v.watched, v.pub_key, v.voting_power, v.is_active,
            v.first_seen_height, v.last_seen_height,
            coalesce(a.slots_short, 0) as slots_short,
            coalesce(a.signed_short, 0) as signed_short,

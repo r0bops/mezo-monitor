@@ -43,9 +43,11 @@ export function createAvatarResolver(): (identity: string) => Promise<string | n
 
 /**
  * Attach `avatar_url` to each row, resolving each distinct identity once.
- * Rows without an identity (or whose identity resolves to nothing) get null.
+ * Precedence: the chain's Keybase identity, then a stored third-party avatar
+ * (Matchbox, synced by the indexer), then null — which the dashboard renders
+ * as an identicon.
  */
-export async function withAvatars<T extends { identity: string | null }>(
+export async function withAvatars<T extends { identity: string | null; avatar_url?: string | null }>(
   rows: T[],
   resolve: (identity: string) => Promise<string | null>,
 ): Promise<(T & { avatar_url: string | null })[]> {
@@ -53,5 +55,8 @@ export async function withAvatars<T extends { identity: string | null }>(
   const urls = new Map<string, string | null>(
     await Promise.all(identities.map(async (id) => [id, await resolve(id)] as const)),
   );
-  return rows.map((r) => ({ ...r, avatar_url: r.identity === null ? null : (urls.get(r.identity) ?? null) }));
+  return rows.map((r) => ({
+    ...r,
+    avatar_url: (r.identity !== null ? (urls.get(r.identity) ?? null) : null) ?? r.avatar_url ?? null,
+  }));
 }

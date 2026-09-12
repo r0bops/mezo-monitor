@@ -13,6 +13,7 @@ import { resolveEndpoints, resolveLcdUrls, type ChainConfig } from "./config";
 import { chooseActive, probe, type EndpointRow } from "./endpoints";
 import { fetchMonikers, syncMonikers } from "./monikers";
 import { sweepLocations } from "./locations";
+import { syncMatchbox } from "./matchbox";
 import { parseBlock } from "./parsers";
 import { runRetentionSweep, DEFAULT_RETAIN_BLOCKS } from "./retention";
 import { CometbftRpc, isThrottled } from "./rpc";
@@ -37,6 +38,8 @@ const RETAIN_BLOCKS = Number(process.env.SIGNATURE_RETAIN_BLOCKS ?? DEFAULT_RETA
 const MONIKER_SYNC_MS = Number(process.env.MONIKER_SYNC_INTERVAL_MS ?? 3600_000);
 /** Peers churn but node locations barely move; 15 min is plenty. */
 const LOCATION_SWEEP_MS = Number(process.env.LOCATION_SWEEP_INTERVAL_MS ?? 15 * 60_000);
+/** Matchbox profiles barely change; a slow refresh is plenty. */
+const MATCHBOX_SYNC_MS = Number(process.env.MATCHBOX_SYNC_INTERVAL_MS ?? 6 * 3600_000);
 
 loadEnv();
 const { db } = createDb();
@@ -446,8 +449,23 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
       console.error("location sweep failed:", (e as Error).message);
     }
   };
+
+  /**
+   * Matchbox identity sync (see matchbox.ts): monikers and operator logos
+   * joined by consensus pubkey — the identity source that works while the
+   * LCD is dead. Rarely changes; 6h is plenty. Fail-soft.
+   */
+  const syncMatchboxIdentities = async (): Promise<void> => {
+    try {
+      const r = await syncMatchbox(db, chainId);
+      if (r.monikers > 0 || r.avatars > 0)
+        console.log(`matchbox: ${r.monikers} moniker(s), ${r.avatars} avatar(s) updated`);
+    } catch (e) {
+      console.error("matchbox sync failed:", (e as Error).message);
+    }
+  };
   void sweep();
-  // The periodic interval is armed only after boot completes: runIndexer can
+  void syncMatchboxIdentities();  // The periodic interval is armed only after boot completes: runIndexer can
   // reject below on an unreachable RPC and be retried every 15s, and an
   // interval armed here would leak on every failed attempt.
 
@@ -602,6 +620,7 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
 
   // periodic location sweep (the first ran before RPC access, above)
   setInterval(() => void sweep(), LOCATION_SWEEP_MS);
+  setInterval(() => void syncMatchboxIdentities(), MATCHBOX_SYNC_MS);
 
   // backfill: backward from head to depth (archive node ⇒ no pruning boundary)
   void (async () => {
