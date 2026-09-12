@@ -237,6 +237,7 @@ export default function App() {
           {page === "overview" && (
             <Overview
               d={d}
+              live={live}
               selected={selected}
               onSelect={setSelected}
               win={win}
@@ -305,6 +306,37 @@ export default function App() {
         </main>
       </div>
 
+      {/* Floating feedback (monadvision reference): the only channel a public
+          visitor has to report wrong data. mailto keeps it zero-infrastructure;
+          swap for a tailnet-only form if the address ever draws spam. */}
+      <a
+        href="mailto:nwrobj@gmail.com?subject=mezo-monitor%20feedback&body=(what%20looks%20wrong%2C%20on%20which%20page)%3A%20"
+        title="Report wrong data or suggest something"
+        style={{
+          position: "fixed",
+          right: 18,
+          bottom: 18,
+          zIndex: 40,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 7,
+          height: 34,
+          padding: "0 13px",
+          borderRadius: 17,
+          border: "1px solid var(--line)",
+          background: "var(--panel)",
+          color: TX2,
+          font: `600 11px/1 ${sans}`,
+          textDecoration: "none",
+          boxShadow: "var(--shadow)",
+        }}
+      >
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 6.5v7a2 2 0 01-2 2H8l-4 3v-3H5a2 2 0 01-2-2v-7a2 2 0 012-2h10a2 2 0 012 2z" />
+          <path d="M8 9h4M8 11.5h2.5" />
+        </svg>
+        Feedback
+      </a>
     </div>
   );
 }

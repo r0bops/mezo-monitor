@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Dashboard } from "../useDashboard";
 import type { Slot, Validator } from "../api";
 import { WorldMap } from "../components/WorldMap";
+import { Pipeline } from "../components/Pipeline";
 import {
   BAD,
   BRAND,
@@ -31,6 +32,7 @@ const WINDOWS = [100, 500, 1000];
 
 export function Overview({
   d,
+  live,
   selected,
   onSelect,
   win,
@@ -39,6 +41,7 @@ export function Overview({
   onCopy,
 }: {
   d: Dashboard;
+  live: boolean;
   selected: string | null;
   onSelect: (a: string) => void;
   win: number;
@@ -171,6 +174,8 @@ export function Overview({
           <LagTile dash={dash} d={d} />
         </div>
       )}
+
+      <Pipeline live={live} />
 
       <div className="row">
         <ValidatorTable
@@ -359,6 +364,17 @@ function SigningTile({ dash, net }: { dash: boolean; net: Dashboard["net"] }) {
           <span>−100</span>
           <span>now</span>
         </div>
+        {/* Power-weighted view of the same window: what fraction of the set's
+            voting power actually committed (namada reference). */}
+        <span
+          title="share of the set's voting power that committed over the last 100 blocks"
+          style={{ font: `500 10px/1 ${sans}`, color: TX3 }}
+        >
+          power online{" "}
+          <strong style={{ color: net?.signing_power_online !== null && (net?.signing_power_online ?? 0) < 100 ? WARN : OK }}>
+            {dash || !net || net.signing_power_online === null ? "—" : pct(net.signing_power_online)}
+          </strong>
+        </span>
       </div>
     </div>
   );

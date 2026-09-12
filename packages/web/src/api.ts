@@ -31,6 +31,8 @@ export type Network = {
   last_block_time: string | null;
   avg_block_time_ms: number | null;
   signing_rate_100: number | null;
+  /** Share of the set's voting power that committed, trailing 100 blocks. */
+  signing_power_online: number | null;
   active_validators: number;
   total_validators: number;
   chain_head_height: number | null;
@@ -221,6 +223,19 @@ async function get<T>(path: string): Promise<T> {
 }
 
 export const getNetwork = () => get<Network>("/api/v1/network");
+
+/** One card in the consensus pipeline strip (see /api/v1/consensus/pipeline). */
+export type PipelineBlock = {
+  height: number;
+  time: string;
+  proposer: { address: string; moniker: string | null; avatar_url: string | null } | null;
+  tx_count: number | null;
+  votes: { signed: number | null; total: number | null };
+  /** null on the newest block until its successor's commit arrives. >0 = extra rounds. */
+  round: number | null;
+};
+export const getPipeline = () =>
+  get<{ blocks: PipelineBlock[] }>("/api/v1/consensus/pipeline");
 export const getValidators = () => get<ValidatorList>("/api/v1/validators");
 export const getValidatorSet = () => get<ValidatorSet>("/api/v1/validator-set");
 export const getMetrics = (hours: number = 24) => get<Metrics>(`/api/v1/metrics?hours=${hours}`);

@@ -210,6 +210,40 @@ export function Validators({
         </div>
       </div>
 
+      {/* One-glance state of the whole set before reading a single row (guru
+          reference). Every value already computed — pure presentation. */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+        {(() => {
+          const active = d.validators.filter((v) => v.is_active).length;
+          const worstStreak = d.validators.reduce((m, v) => Math.max(m, v.missed_streak), 0);
+          const degraded = d.validators.filter((v) => v.status !== "active").length;
+          const chips: [string, string, string][] = [
+            [`${active}/${d.validators.length}`, "active", active === d.validators.length ? OK : WARN],
+            [pct(d.net?.signing_rate_100 ?? null), "signing · 100", (d.net?.signing_rate_100 ?? 0) < 99.5 ? WARN : OK],
+            [pct(d.net?.signing_power_online ?? null), "power online", (d.net?.signing_power_online ?? 0) < 100 ? WARN : OK],
+            [String(worstStreak), "worst miss streak", worstStreak >= 3 ? BAD : TX2],
+            [String(degraded), "degraded", degraded > 0 ? WARN : TX3],
+          ];
+          return chips.map(([value, label, color]) => (
+            <span
+              key={label}
+              style={{
+                display: "inline-flex",
+                alignItems: "baseline",
+                gap: 7,
+                padding: "7px 12px",
+                borderRadius: 9,
+                border: "1px solid var(--line)",
+                background: "var(--panel)",
+              }}
+            >
+              <strong style={{ font: `600 13px/1 ${mono}`, color }}>{value}</strong>
+              <span style={{ font: `500 10px/1 ${sans}`, color: TX3 }}>{label}</span>
+            </span>
+          ));
+        })()}
+      </div>
+
       <section style={{ ...panel, overflow: "hidden", marginBottom: 16 }}>
         <WorldMap validators={d.validators} />
       </section>
@@ -247,17 +281,23 @@ export function Validators({
           </div>
         )}
 
-        {rows.map((v) => (
-          <FullRow
-            key={v.address}
-            v={v}
-            selected={v.address === selected}
-            onSelect={onSelect}
-            longTarget={longTarget}
-            onWatch={(watched) => d.patchValidator(v.address, { watched })}
-            onLabel={(label) => d.patchValidator(v.address, { label })}
-          />
-        ))}
+        {rows.map((v, i) => {
+          // Cumulative proposer share in display order, for the concentration bar.
+          let cum = 0;
+          for (let j = 0; j <= i; j++) cum += rows[j].proposer_share_1000 ?? 0;
+          return (
+            <FullRow
+              key={v.address}
+              v={v}
+              cumShare={cum}
+              selected={v.address === selected}
+              onSelect={onSelect}
+              longTarget={longTarget}
+              onWatch={(watched) => d.patchValidator(v.address, { watched })}
+              onLabel={(label) => d.patchValidator(v.address, { label })}
+            />
+          );
+        })}
 
         <div
           style={{
@@ -289,6 +329,7 @@ function statusColor(v: number | null, status: ValidatorStatus): string {
 
 function FullRow({
   v,
+  cumShare,
   selected,
   onSelect,
   longTarget,
@@ -296,6 +337,8 @@ function FullRow({
   onLabel,
 }: {
   v: Validator;
+  /** Summed proposer share of this row and every row above it in display order. */
+  cumShare: number;
   selected: boolean;
   onSelect: (a: string) => void;
   longTarget: number;
@@ -445,8 +488,16 @@ function FullRow({
         <span style={{ font: `500 12px/1 ${mono}`, color: TX2, width: 44 }}>
           {pct(v.proposer_share_1000, 2)}
         </span>
-        <span style={{ flex: 1 }}>
+        <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
           <Bar width={clampPct(v.proposer_share_1000 ?? 0, 0, 10)} color={BRAND} h={4} />
+          {/* Cumulative share through this rank in display order (guru
+              reference): the concentration view — how much of all block
+              production the rows so far account for. */}
+          <Bar
+            width={`${Math.min(100, cumShare).toFixed(1)}%`}
+            color="var(--line2)"
+            h={2}
+          />
         </span>
       </div>
       <span style={{ font: `400 11.5px/1 ${mono}`, color: TX3 }}>{fmt(v.last_signed_height)}</span>
