@@ -1,10 +1,11 @@
 /**
- * Consensus pipeline: the newest blocks as a left→right journey — who
- * proposed, who voted, whether the chain needed extra rounds. Modelled on
- * monatlas (docs/ui-references.md). Every block here is already committed,
- * so each card is FINALIZED by definition; the interesting signal is the
- * round badge: round 0 is the happy path, round > 0 means the proposer was
- * slow or absent and the chain had to retry.
+ * Consensus pipeline: the newest blocks as a strip, NEWEST ON THE LEFT so
+ * the live edge is always visible without scrolling — history extends to
+ * the right. Who proposed, who voted, whether the chain needed extra
+ * rounds. Modelled on monatlas (docs/ui-references.md). Every block here
+ * is already committed, so each card is FINALIZED by definition; the
+ * interesting signal is the round badge: round 0 is the happy path,
+ * round > 0 means the proposer was slow or absent and the chain retried.
  */
 import { useEffect, useState } from "react";
 import type { PipelineBlock as Block } from "../api";
@@ -56,7 +57,7 @@ export function Pipeline({ live }: { live: boolean }) {
           {error
             ? `unavailable (${error})`
             : blocks
-              ? `newest ${blocks.length} blocks · proposed → voted → finalized`
+              ? `newest ${blocks.length} blocks · newest on the left`
               : "loading…"}
         </span>
       </div>
@@ -69,10 +70,10 @@ export function Pipeline({ live }: { live: boolean }) {
           overflowX: "auto",
         }}
       >
-        {(blocks ?? []).map((b, i) => (
+        {(blocks ?? []).slice().reverse().map((b, i) => (
           <div key={b.height} style={{ display: "flex", alignItems: "stretch", flex: "none" }}>
             {i > 0 && <div style={arrowStyle}>→</div>}
-            <BlockCard b={b} newest={i === (blocks?.length ?? 0) - 1} />
+            <BlockCard b={b} newest={i === 0} />
           </div>
         ))}
         {blocks?.length === 0 && (
