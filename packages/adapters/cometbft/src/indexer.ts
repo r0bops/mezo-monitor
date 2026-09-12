@@ -113,6 +113,15 @@ async function persistBlock(chainId: number, raw: unknown): Promise<{ height: nu
         });
     }
 
+    // The commit we just read carries the round that finalized the PREVIOUS
+    // block — fill it in now that it is known. >0 marks a slow round.
+    if (p.commitRound !== null) {
+      await tx
+        .update(blocks)
+        .set({ round: p.commitRound })
+        .where(and(eq(blocks.chainId, chainId), eq(blocks.height, p.commitHeight)));
+    }
+
     await tx
       .update(chains)
       .set({ latestIndexedHeight: p.height, updatedAt: new Date() })

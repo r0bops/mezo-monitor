@@ -84,6 +84,9 @@ export type ParsedBlock = {
   signatureCount: number;
   /** Height these signatures are committing (block.height - 1). */
   commitHeight: number;
+  /** Round that finalized the committed block (last_commit.round); null when
+   *  the field is absent (e.g. height 1, no prior commit). */
+  commitRound: number | null;
   signatures: ParsedSignature[];
 };
 
@@ -102,6 +105,7 @@ export function parseBlock(j: unknown): ParsedBlock {
   const sigs = lastCommit?.signatures ?? [];
   const blockHeight = Number(header.height);
   const commitHeight = lastCommit?.height ? Number(lastCommit.height) : blockHeight - 1;
+  const commitRound = lastCommit?.round !== undefined ? Number(lastCommit.round) : null;
   const present = sigs.filter((s) => s.validator_address);
   const signatures: ParsedSignature[] = present.map((s) => ({
     validator_address: s.validator_address!.toLowerCase(),
@@ -116,6 +120,7 @@ export function parseBlock(j: unknown): ParsedBlock {
     validatorCount: present.length,
     signatureCount: signatures.filter((s) => s.signed).length,
     commitHeight,
+    commitRound: commitRound !== null && Number.isFinite(commitRound) ? commitRound : null,
     signatures,
   };
 }

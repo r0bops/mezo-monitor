@@ -210,6 +210,13 @@ export const blocks = pgTable(
     proposerAddress: text("proposer_address"),
     validatorCount: integer("validator_count"),
     signatureCount: integer("signature_count"),
+    /**
+     * Consensus round that finalized this block (0 = first round). Stored one
+     * ingest late — a block's round is only known from the NEXT block's
+     * last_commit — so the newest block is null until its successor lands.
+     * >0 means the chain needed extra rounds: a slow or absent proposer.
+     */
+    round: integer("round"),
     txCount: integer("tx_count"),
     ingestedAt: timestamp("ingested_at", { withTimezone: true }).notNull().defaultNow(),
   },
