@@ -164,6 +164,8 @@ export type NetworkRow = {
   total_validators: number;
   blocks_indexed_24h: number;
   signing_rate_100: number | null;
+  /** Share of the set's voting power that committed, trailing 100 blocks. */
+  signing_power_online: number | null;
   /**
    * Blocks present *within the trailing long window*, not the total row count.
    * A gap-filling backfill has plenty of rows overall while the recent window
@@ -209,6 +211,17 @@ export async function networkSummary(pool: pg.Pool, chainId: number): Promise<Ne
     lw as (
       select count(*)::int as n from blocks
       where chain_id = $1 and height > (select latest from b) - $2
+    ),
+    pw as (
+      -- Signing power online: share of the set's capacity that actually
+      -- committed, over the trailing 100 blocks. With equal voting power
+      -- (PoA) this is the signature rate; kept as its own figure so the
+      -- meaning survives if powers ever diverge.
+      select sum(signature_count)::float8 / nullif(sum(validator_count), 0) * 100 as pct
+      from (
+        select signature_count, validator_count
+        from blocks where chain_id = $1 order by height desc limit 100
+      ) recent
     )
     select b.latest as latest_indexed_height,
            b.earliest as earliest_indexed_height,
@@ -219,12 +232,45 @@ export async function networkSummary(pool: pg.Pool, chainId: number): Promise<Ne
            v.total as total_validators,
            d.n as blocks_indexed_24h,
            bt.rate as signing_rate_100,
+           pw.pct as signing_power_online,
            lw.n as blocks_in_long_window
-    from b, bt, v, d, lw
+    from b, bt, v, d, lw, pw
     `,
     [chainId, LONG_WINDOW],
   );
   return r.rows[0];
+}
+
+/** One block in the consensus pipeline strip. */
+export type PipelineBlock = {
+  height: number;
+  time: Date;
+  proposer_address: string | null;
+  moniker: string | null;
+  identity: string | null;
+  tx_count: number | null;
+  signature_count: number | null;
+  validator_count: number | null;
+  round: number | null;
+};
+
+/**
+ * The newest blocks with proposer identity, votes and consensus round — the
+ * data behind the "block journey" strip. Round is null on the newest block
+ * until its successor's commit arrives (see schema note on blocks.round).
+ */
+export async function pipelineBlocks(pool: pg.Pool, chainId: number, limit = 8): Promise<PipelineBlock[]> {
+  const r = await pool.query<PipelineBlock>(
+    `select b.height, b.time, b.proposer_address, v.moniker, v.identity,
+            b.tx_count, b.signature_count, b.validator_count, b.round
+     from blocks b
+     left join validators v on v.chain_id = b.chain_id and v.address = b.proposer_address
+     where b.chain_id = $1
+     order by b.height desc
+     limit $2`,
+    [chainId, limit],
+  );
+  return r.rows.reverse(); // oldest → newest, left to right in the strip
 }
 
 export type ValidatorRow = {

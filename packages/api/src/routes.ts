@@ -17,6 +17,7 @@ import {
   listEndpoints,
   metricStats,
   networkSummary,
+  pipelineBlocks,
   proposedTotal,
   recentBlockSigning,
   seriesBuckets,
@@ -234,6 +235,38 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
 
   app.get("/health", async () => ({ status: "ok", uptime: process.uptime() }));
 
+  /**
+   * The consensus pipeline strip: the newest blocks with proposer identity
+   * (logo via the shared avatar resolver), votes, tx count and consensus
+   * round. Round > 0 = the chain needed extra rounds (slow proposer) and is
+   * surfaced by the UI as a timeout marker.
+   */
+  app.get("/api/v1/consensus/pipeline", async (_req, reply) => {
+    const chain = requireChain(reply);
+    if (!chain) return;
+    const rows = await pipelineBlocks(pool, chain.id, 8);
+    const withLogos = await withAvatars(
+      rows.map((b) => ({ ...b, address: b.proposer_address ?? "" })),
+      resolveAvatar,
+    );
+    return {
+      blocks: withLogos.map((b, i) => ({
+        height: b.height,
+        time: b.time.toISOString(),
+        proposer: b.proposer_address
+          ? {
+              address: b.proposer_address,
+              moniker: b.moniker,
+              avatar_url: b.avatar_url,
+            }
+          : null,
+        tx_count: b.tx_count,
+        votes: { signed: b.signature_count, total: b.validator_count },
+        round: rows[i].round,
+      })),
+    };
+  });
+
   app.get("/api/v1/network", async (_req, reply) => {
     const chain = requireChain(reply);
     if (!chain) return;
@@ -293,6 +326,9 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         last_block_time: n.last_block_time,
         avg_block_time_ms: n.avg_block_time_ms,
         signing_rate_100: n.signing_rate_100,
+        /** Share of the set's voting power that committed over the last 100
+         *  blocks — the "is consensus actually working" number. */
+        signing_power_online: n.signing_power_online,
         active_validators: n.active_validators,
         total_validators: n.total_validators,
         chain_head_height: headHeight,

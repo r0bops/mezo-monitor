@@ -10,6 +10,7 @@ import {
   LONG_WINDOW,
   SHORT_WINDOW,
   networkSummary,
+  pipelineBlocks,
   proposedTotal,
   signingSlots,
   validatorMetrics,
@@ -30,6 +31,7 @@ beforeAll(async () => {
     head: HEAD,
     count: 1_200, // > SHORT_WINDOW, < LONG_WINDOW: exercises the partial case
     validators: [A, B, C],
+    monikers: { [A]: "Alpha Node", [B]: "Beta Node", [C]: "Gamma Node" },
     missed: {
       // B missed the four most recent blocks -> current streak of 4.
       [B]: [HEAD, HEAD - 1, HEAD - 2, HEAD - 3],
@@ -122,6 +124,29 @@ describe("networkSummary", () => {
     const n = await networkSummary(pool, chainId);
     // Fixtures are spaced exactly 3s apart.
     expect(n.avg_block_time_ms).toBeCloseTo(3_000, 0);
+  });
+
+  it("reports signing power online for the trailing 100 blocks", async () => {
+    const n = await networkSummary(pool, chainId);
+    expect(n.signing_power_online).not.toBeNull();
+    expect(n.signing_power_online!).toBeGreaterThan(0);
+    expect(n.signing_power_online!).toBeLessThanOrEqual(100);
+  });
+});
+
+describe("pipelineBlocks", () => {
+  it("returns the newest blocks oldest-first with proposer identity", async () => {
+    const blocks = await pipelineBlocks(pool, chainId, 5);
+    expect(blocks).toHaveLength(5);
+    // oldest → newest
+    expect(blocks[0].height).toBeLessThan(blocks[4].height);
+    expect(blocks[4].height).toBe(HEAD);
+    // the seeded round-robin proposer maps onto a validator moniker
+    const withMoniker = blocks.find((b) => b.moniker !== null);
+    expect(withMoniker).toBeDefined();
+    // round is null for fixture blocks (never set) — rendered as unknown,
+    // never defaulted to 0
+    expect(blocks.every((b) => b.round === null)).toBe(true);
   });
 });
 
