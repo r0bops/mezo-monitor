@@ -120,8 +120,8 @@ export function Validators({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div
             style={{
               display: "flex",
@@ -248,7 +248,7 @@ export function Validators({
         <WorldMap validators={d.validators} />
       </section>
 
-      <section style={{ ...panel, overflow: "hidden" }}>
+      <section style={{ ...panel, overflowX: "auto" }}>
         <div
           style={{
             display: "grid",

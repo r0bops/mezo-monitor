@@ -131,8 +131,17 @@ export function WorldMap({
         {Array.from({ length: 11 }, (_, i) => (
           <line key={`v${i}`} y1={0} y2={H} x1={(i * W) / 12 + W / 24} x2={(i * W) / 12 + W / 24} stroke="var(--line)" strokeWidth={0.4} />
         ))}
+        {/* Land mixes the tertiary text token into the ocean colour, so it
+            stays visible in BOTH themes — plain --panel is white-on-white in
+            light mode. */}
         {(paths ?? []).map((d, i) => (
-          <path key={i} d={d} fill="var(--panel)" stroke="var(--line)" strokeWidth={0.5} />
+          <path
+            key={i}
+            d={d}
+            fill="color-mix(in srgb, var(--tx3) 32%, var(--panel2))"
+            stroke="var(--line2)"
+            strokeWidth={0.5}
+          />
         ))}
         {/* dots after land so they sit on top; later same-city dots offset by hash jitter */}
         {placed.map((v) => {

@@ -519,7 +519,13 @@ function ValidatorTable({
 
   return (
     <Section
-      style={{ width: 652, flex: "none", ...(height !== undefined ? { height } : {}) }}
+      style={{
+        width: 652,
+        flex: "none",
+        maxWidth: "100%",
+        overflowX: "auto",
+        ...(height !== undefined ? { height } : {}),
+      }}
       // Section wraps children in a body div; without this it is height:auto,
       // grows to the full list height and clips — the scroll chain below never
       // receives the section's fixed height.
