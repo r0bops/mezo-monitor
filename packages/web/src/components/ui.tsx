@@ -134,7 +134,9 @@ export function ValidatorAvatar({
   const showLogo = avatarUrl !== null && !failed;
   return showLogo ? (
     <img
-      src={avatarUrl}
+      // Same-origin proxy, not the raw third-party URL: keeps the public
+      // site's strict img-src 'self' intact and visitors off Supabase.
+      src={`/api/v1/validators/${encodeURIComponent(address)}/avatar`}
       alt=""
       title={title}
       loading="lazy"

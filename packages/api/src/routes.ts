@@ -147,6 +147,50 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   const resolveAvatar = createAvatarResolver();
 
   /**
+   * Same-origin avatar proxy: the dashboard's <img> tags point here instead
+   * of at Matchbox's Supabase, so the public site's strict img-src 'self'
+   * holds AND visitors' browsers never talk to a third party for logos.
+   * Bytes are cached per URL for a day; any miss or upstream failure is a
+   * 404, which the client renders as its identicon fallback.
+   */
+  const AVATAR_LIMIT = 2 * 1024 * 1024;
+  const avatarBytes = new CacheMap(async (url: string): Promise<{ type: string; body: Buffer } | null> => {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+      if (!res.ok) return null;
+      const len = Number(res.headers.get("content-length") ?? 0);
+      if (len > AVATAR_LIMIT) return null;
+      const body = Buffer.from(await res.arrayBuffer());
+      if (body.byteLength > AVATAR_LIMIT) return null;
+      const type = res.headers.get("content-type") ?? "image/png";
+      return /^image\//.test(type) ? { type, body } : null;
+    } catch {
+      return null;
+    }
+  }, 24 * 60 * 60 * 1000);
+  app.get<{ Params: { address: string } }>("/api/v1/validators/:address/avatar", async (req, reply) => {
+    const chain = requireChain(reply);
+    if (!chain) return;
+    const r = await pool.query<{ avatar_url: string | null }>(
+      `select avatar_url from validators where chain_id = $1 and lower(address) = lower($2)`,
+      [chain.id, req.params.address],
+    );
+    const url = r.rows[0]?.avatar_url;
+    if (!url) {
+      reply.code(404);
+      return { error: "no avatar for this validator" };
+    }
+    const hit = await avatarBytes.get(url);
+    if (!hit) {
+      reply.code(404);
+      return { error: "avatar unavailable" };
+    }
+    reply.header("content-type", hit.type);
+    reply.header("cache-control", "public, max-age=3600");
+    return reply.send(hit.body);
+  });
+
+  /**
    * Landmass GeoJSON for the map, proxied same-origin: the public site's CSP
    * allows no third-party connect-src, and this way one server-side fetch
    * (day-TTL, coalesced) serves every visitor. Unreachable upstream is a 502
