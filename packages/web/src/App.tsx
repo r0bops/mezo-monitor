@@ -2,7 +2,7 @@
  * Shell: sidebar, header, state banner, page routing and footer.
  * Layout is the mockup's fixed 1440px desktop frame.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDashboard } from "./useDashboard";
 import { Overview, verdictFor } from "./pages/Overview";
 import { Validators } from "./pages/Validators";
@@ -41,13 +41,23 @@ const NAV: { id: PageId; label: string; d: string }[] = [
 ];
 
 const TITLES: Record<PageId, string> = {
-  overview: "Overview",
+  overview: "Network Overview",
   validators: "Validators",
   vset: "Validator Set",
   metrics: "Metrics",
   rpc: "Direct RPC",
   api: "API & Docs",
   settings: "Settings",
+};
+
+const SUBTITLES: Record<PageId, string> = {
+  overview: "Real-time insights into the Mezo network, secured by Pathrock Network.",
+  validators: "Validator performance, identity, uptime, and network status.",
+  vset: "Track voting power and changes to the active validator set.",
+  metrics: "Network health and consensus performance over time.",
+  rpc: "Inspect the connected Mezo RPC endpoint directly.",
+  api: "Build with indexed Mezo network data.",
+  settings: "Personalize the monitor and its data display.",
 };
 
 const VALID_PAGES = new Set<string>(NAV.map((n) => n.id));
@@ -67,6 +77,8 @@ export default function App() {
   const [win, setWin] = useState(500);
   const [metricsHours, setMetricsHours] = useState(24);
   const [copied, setCopied] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     localStorage.setItem("mezo-theme", theme);
@@ -76,6 +88,17 @@ export default function App() {
     const onHash = () => setPage(pageFromHash());
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const go = useCallback((id: PageId) => {
@@ -114,21 +137,36 @@ export default function App() {
       <div className="shell">
         <Sidebar page={page} go={go} d={d} />
 
-        <main style={{ flex: 1, minWidth: 0, padding: "0 28px 30px", display: "flex", flexDirection: "column" }}>
+        <main className="main-content" style={{ flex: 1, minWidth: 0, padding: "0 28px 30px", display: "flex", flexDirection: "column" }}>
           <header
+            className="topbar"
             style={{
               display: "flex",
-              alignItems: "flex-start",
+              alignItems: "center",
               justifyContent: "space-between",
               gap: 24,
-              padding: "22px 0 18px",
+              padding: "20px 0 18px",
             }}
           >
-            <div style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0 }}>
-              <h1 style={{ margin: 0, font: `600 21px/1.15 ${sans}`, letterSpacing: "-.01em", color: TX }}>
-                {TITLES[page]}
-              </h1>
-            </div>
+            <form
+              className="global-search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const q = search.trim().toLowerCase();
+                if (!q) return;
+                const match = d.validators.find((v) =>
+                  v.address.toLowerCase().includes(q) ||
+                  v.moniker?.toLowerCase().includes(q) ||
+                  v.label?.toLowerCase().includes(q),
+                );
+                if (match) setSelected(match.address);
+                go("validators");
+              }}
+            >
+              <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>
+              <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search blocks, transactions, validators, addresses…" aria-label="Search the network" />
+              <kbd>⌘ K</kbd>
+            </form>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
               <EndpointSwitcher d={d} />
               <button
@@ -208,8 +246,19 @@ export default function App() {
                 </svg>
                 {copied === window.location.href ? "Copied" : "Share"}
               </button>
+              <span className="user-avatar" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor"><circle cx="10" cy="6.5" r="3.5"/><path d="M3.5 17c.5-4 2.7-6 6.5-6s6 2 6.5 6z"/></svg>
+              </span>
             </div>
           </header>
+
+          <div className="page-heading">
+            <div>
+              <h1>{TITLES[page]}</h1>
+              <span className="page-subtitle">{SUBTITLES[page]}</span>
+            </div>
+            <span className="slogan">Decentralized today. Brighter tomorrow.</span>
+          </div>
 
           {banner && (
             <div
@@ -356,24 +405,21 @@ function Sidebar({
 }) {
   return (
     <aside className="side">
-      <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 4px 22px" }}>
-        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" style={{ flex: "none" }}>
-          <rect x="1" y="8" width="2.6" height="6" rx="1.3" fill="var(--brand)" opacity=".45" />
-          <rect x="5" y="5" width="2.6" height="12" rx="1.3" fill="var(--brand)" opacity=".7" />
-          <rect x="9" y="1.5" width="2.6" height="19" rx="1.3" fill="var(--brand)" />
-          <rect x="13" y="6" width="2.6" height="10" rx="1.3" fill="var(--brand)" opacity=".7" />
-          <rect x="17" y="9" width="2.6" height="4" rx="1.3" fill="var(--brand)" opacity=".45" />
-        </svg>
+      <div className="brand-lockup">
+        <img className="mezo-wave" src="/mezo-icon.png" alt="" aria-hidden="true" />
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          <span style={{ font: `700 11.5px/1 ${sans}`, letterSpacing: ".15em", color: TX }}>MEZO</span>
-          <span style={{ font: `500 9.5px/1 ${sans}`, letterSpacing: ".22em", color: TX3 }}>MONITOR</span>
+          <span style={{ font: `750 20px/1 ${sans}`, color: TX }}>Mezo</span>
+          <span style={{ font: `600 9px/1 ${sans}`, letterSpacing: ".24em", color: TX3 }}>MONITOR</span>
         </div>
       </div>
+      <div className="brand-by">by Pathrock Network</div>
 
       <nav>
-        {NAV.map((n) => (
+        {NAV.flatMap((n) => {
+          const item = (
           <a
             key={n.id}
+            className={page === n.id ? "active" : undefined}
             href={`#/${n.id}`}
             onClick={(e) => {
               e.preventDefault();
@@ -396,8 +442,18 @@ function Sidebar({
             </svg>
             <span>{n.label}</span>
           </a>
-        ))}
+          );
+          if (n.id !== "vset") return [item];
+          return [item,
+            <span className="nav-disabled" key="blocks"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m10 3 6 3.5v7L10 17l-6-3.5v-7zM4 6.5l6 3.5 6-3.5M10 10v7"/></svg>Blocks</span>,
+            <span className="nav-disabled" key="transactions"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 7h12m0 0-3-3m3 3-3 3M16 13H4m0 0 3-3m-3 3 3 3"/></svg>Transactions</span>,
+          ];
+        })}
       </nav>
+      <div className="pathrock-card">
+        <img className="pathrock-orbit" src="/pathrock-mark.svg" alt="" aria-hidden="true" />
+        <div><strong>PATHROCK<br />NETWORK</strong><small>Open infrastructure for a more decentralized tomorrow.</small></div>
+      </div>
     </aside>
   );
 }

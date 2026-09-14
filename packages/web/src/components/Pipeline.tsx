@@ -12,7 +12,7 @@ import type { PipelineBlock as Block } from "../api";
 import { getPipeline } from "../api";
 import { ValidatorAvatar } from "./ui";
 import { agoFrom, fmt, short } from "../lib";
-import { BRAND, OK, TX, TX2, TX3, WARN, mono, panel, sans } from "./ui";
+import { BRAND, TX, TX3, WARN, mono, panel, sans } from "./ui";
 
 const POLL_MS = 10_000;
 
@@ -52,7 +52,10 @@ export function Pipeline({ live }: { live: boolean }) {
           borderBottom: "1px solid var(--line)",
         }}
       >
-        <h2 style={{ margin: 0, font: `600 13px/1 ${sans}`, color: TX }}>Consensus pipeline</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <h2 style={{ margin: 0, font: `650 13px/1 ${sans}`, color: TX }}>Recent Blocks / Consensus Pipeline</h2>
+          <span style={{ font: `400 10px/1 ${sans}`, color: TX3 }}>Latest blocks and their validators — newest on the left.</span>
+        </div>
         <span style={{ font: `400 10.5px/1 ${mono}`, color: TX3 }}>
           {error
             ? `unavailable (${error})`
@@ -95,29 +98,38 @@ function BlockCard({ b, newest }: { b: Block; newest: boolean }) {
         `votes: ${b.votes.signed ?? "—"}/${b.votes.total ?? "—"}${slow ? `\nneeded ${b.round} extra round(s)` : ""}\n` +
         `${agoFrom(b.time)} ago`}
       style={{
-        minWidth: 168,
-        maxWidth: 190,
-        padding: "9px 11px",
+        minWidth: 198,
+        maxWidth: 220,
+        minHeight: 76,
+        padding: "10px 12px",
         borderRadius: 10,
         border: `1px solid ${newest ? "var(--brand)" : "var(--line)"}`,
         background: slow ? "var(--warnSoft)" : "var(--panel2)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
+        display: "grid",
+        gridTemplateColumns: "38px minmax(0,1fr)",
+        columnGap: 10,
+        alignItems: "center",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      <div className="pipeline-logo">
         {b.proposer ? (
-          <>
-            <ValidatorAvatar
-              address={b.proposer.address}
-              avatarUrl={b.proposer.avatar_url}
-              title={b.proposer.moniker ?? undefined}
-              size={16}
-            />
+          <ValidatorAvatar
+            address={b.proposer.address}
+            avatarUrl={b.proposer.avatar_url}
+            title={b.proposer.moniker ?? undefined}
+            size={36}
+          />
+        ) : (
+          <span className="pipeline-logo-fallback">◇</span>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+        <span style={{ color: newest ? BRAND : TX, font: `600 10.5px/1 ${mono}` }}>#{fmt(b.height)}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          {b.proposer ? (
             <span
               style={{
-                font: `500 10.5px/1 ${sans}`,
+                font: `600 10.5px/1 ${sans}`,
                 color: TX,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
@@ -126,36 +138,13 @@ function BlockCard({ b, newest }: { b: Block; newest: boolean }) {
             >
               {b.proposer.moniker ?? short(b.proposer.address)}
             </span>
-          </>
-        ) : (
-          <span style={{ font: `500 10.5px/1 ${sans}`, color: TX3 }}>unknown proposer</span>
-        )}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, font: `500 10.5px/1 ${mono}` }}>
-        <span style={{ color: newest ? BRAND : TX2 }}>#{fmt(b.height)}</span>
-        <span style={{ color: missedVotes ? WARN : OK, marginLeft: "auto" }}>
-          {b.votes.signed ?? "—"}/{b.votes.total ?? "—"} ✓
-        </span>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, font: `400 9.5px/1 ${sans}`, color: TX3 }}>
-        {slow ? (
-          <span
-            style={{
-              padding: "2px 6px",
-              borderRadius: 5,
-              background: "var(--warnSoft)",
-              color: WARN,
-              fontWeight: 600,
-            }}
-          >
-            ROUND {b.round}
-          </span>
-        ) : (
-          <span style={{ color: OK, fontWeight: 600 }}>FINALIZED</span>
-        )}
-        <span style={{ marginLeft: "auto" }}>
-          {b.tx_count ?? 0} tx · {agoFrom(b.time)}
-        </span>
+          ) : <span style={{ color: TX3 }}>unknown proposer</span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, font: `400 9.5px/1 ${sans}`, color: TX3 }}>
+          <span>{b.tx_count ?? 0} tx · {agoFrom(b.time)}</span>
+          {slow && <span style={{ color: WARN }}>R{b.round}</span>}
+          {missedVotes && <span style={{ color: WARN, marginLeft: "auto" }}>{b.votes.signed}/{b.votes.total}</span>}
+        </div>
       </div>
     </div>
   );
