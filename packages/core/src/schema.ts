@@ -130,6 +130,42 @@ export const validators = pgTable(
 );
 
 /**
+ * RPC endpoints discovered from the chain's own P2P network: peers seen in
+ * /net_info whose RPC port answers /status on our chain. Evidence-based —
+ * every row carries what the node reported (moniker, archive depth, sync
+ * state) at last probe. Listed on the public RPC directory; NOT part of the
+ * indexer's failover rotation, which stays verified-by-human only: an
+ * unvetted node serving fabricated blocks would poison the uptime numbers
+ * this tool exists to report.
+ */
+export const discoveredEndpoints = pgTable(
+  "discovered_endpoints",
+  {
+    id: serial("id").primaryKey(),
+    chainId: integer("chain_id")
+      .notNull()
+      .references(() => chains.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    /** Moniker the node announced in its /status node_info. */
+    moniker: text("moniker"),
+    network: text("network").notNull(),
+    /** Last probe answered with our chain and was in sync. */
+    healthy: boolean("healthy").notNull().default(true),
+    catchingUp: boolean("catching_up").notNull().default(false),
+    earliestHeight: integer("earliest_height"),
+    latestHeight: integer("latest_height"),
+    latencyMs: integer("latency_ms"),
+    timesSeen: integer("times_seen").notNull().default(1),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    chainUrlUniq: uniqueIndex("discovered_endpoints_url_idx").on(t.chainId, t.url),
+    byChain: index("discovered_endpoints_chain_idx").on(t.chainId),
+  }),
+);
+
+/**
  * Last-observed network location per validator.
  *
  * The chain carries no geography; this is derived from what the P2P network

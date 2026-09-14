@@ -207,7 +207,7 @@ export class ApiError extends Error {
   }
 }
 
-async function get<T>(path: string): Promise<T> {
+export async function get<T>(path: string): Promise<T> {
   const r = await fetch(path, { headers: { accept: "application/json" } });
   if (!r.ok) {
     let detail = `${r.status}`;

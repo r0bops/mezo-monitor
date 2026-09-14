@@ -19,6 +19,7 @@ import {
   networkSummary,
   pipelineBlocks,
   proposedTotal,
+  rpcDirectory,
   recentBlockSigning,
   seriesBuckets,
   setChanges,
@@ -307,6 +308,28 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         tx_count: b.tx_count,
         votes: { signed: b.signature_count, total: b.validator_count },
         round: rows[i].round,
+      })),
+    };
+  });
+
+  /**
+   * The public RPC directory (chainlist-style): verified endpoints this
+   * monitor runs on, plus community endpoints discovered on the P2P
+   * network — each with its own evidence (sync state, archive depth,
+   * latency). Read-only; promotion to the failover rotation stays a human
+   * decision made in .env.
+   */
+  app.get("/api/v1/rpc-directory", async (_req, reply) => {
+    const chain = requireChain(reply);
+    if (!chain) return;
+    const rows = await rpcDirectory(pool, chain.id);
+    return {
+      chain_id: chain.chain_id,
+      count: rows.length,
+      endpoints: rows.map((e) => ({
+        ...e,
+        first_seen: e.first_seen ? e.first_seen.toISOString() : null,
+        last_seen: e.last_seen ? e.last_seen.toISOString() : null,
       })),
     };
   });

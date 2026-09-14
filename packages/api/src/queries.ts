@@ -274,6 +274,47 @@ export async function pipelineBlocks(pool: pg.Pool, chainId: number, limit = 8):
   return r.rows.reverse(); // oldest → newest, left to right in the strip
 }
 
+/** One entry in the public RPC directory. */
+export type DirectoryRow = {
+  url: string;
+  source: "configured" | "discovered";
+  label: string | null;
+  healthy: boolean;
+  latency_ms: number | null;
+  last_height: number | null;
+  catching_up: boolean | null;
+  earliest_height: number | null;
+  first_seen: Date | null;
+  last_seen: Date | null;
+};
+
+/**
+ * The public RPC directory: configured endpoints (the indexer's own
+ * rotation, with its health probes) plus community endpoints discovered on
+ * the P2P network. Configured first (they're verified), then discovered by
+ * latency. Discovery rows are evidence about what nodes said of themselves
+ * — see the schema note on discovered_endpoints for why they never join
+ * the rotation automatically.
+ */
+export async function rpcDirectory(pool: pg.Pool, chainId: number): Promise<DirectoryRow[]> {
+  const r = await pool.query<DirectoryRow>(
+    `select e.rpc_url as url, 'configured' as source, e.label,
+            e.healthy, e.latency_ms, e.last_height,
+            null::boolean as catching_up, null::int as earliest_height,
+            null::timestamptz as first_seen, null::timestamptz as last_seen
+     from chain_endpoints e where e.chain_id = $1
+     union all
+     select d.url, 'discovered' as source, d.moniker as label,
+            d.healthy, d.latency_ms, d.latest_height as last_height,
+            d.catching_up, d.earliest_height,
+            d.first_seen_at as first_seen, d.last_seen_at as last_seen
+     from discovered_endpoints d where d.chain_id = $1
+     order by source, healthy desc, latency_ms nulls last`,
+    [chainId],
+  );
+  return r.rows;
+}
+
 export type ValidatorRow = {
   address: string;
   moniker: string | null;

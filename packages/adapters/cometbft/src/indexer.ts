@@ -14,6 +14,7 @@ import { chooseActive, probe, type EndpointRow } from "./endpoints";
 import { fetchMonikers, syncMonikers } from "./monikers";
 import { sweepLocations } from "./locations";
 import { syncMatchbox } from "./matchbox";
+import { sweepDiscovery } from "./discovery";
 import { parseBlock } from "./parsers";
 import { runRetentionSweep, DEFAULT_RETAIN_BLOCKS } from "./retention";
 import { CometbftRpc, isThrottled } from "./rpc";
@@ -40,6 +41,8 @@ const MONIKER_SYNC_MS = Number(process.env.MONIKER_SYNC_INTERVAL_MS ?? 3600_000)
 const LOCATION_SWEEP_MS = Number(process.env.LOCATION_SWEEP_INTERVAL_MS ?? 15 * 60_000);
 /** Matchbox profiles barely change; a slow refresh is plenty. */
 const MATCHBOX_SYNC_MS = Number(process.env.MATCHBOX_SYNC_INTERVAL_MS ?? 6 * 3600_000);
+/** Peer sets churn; an hourly directory refresh is plenty. */
+const DISCOVERY_SWEEP_MS = Number(process.env.DISCOVERY_SWEEP_INTERVAL_MS ?? 3600_000);
 
 loadEnv();
 const { db } = createDb();
@@ -465,7 +468,21 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
     }
   };
   void sweep();
-  void syncMatchboxIdentities();  // The periodic interval is armed only after boot completes: runIndexer can
+  void syncMatchboxIdentities();
+
+  /**
+   * RPC directory discovery (see discovery.ts): community endpoints found
+   * on the P2P network, evidence only — never auto-joined to failover.
+   */
+  const discover = async (): Promise<void> => {
+    try {
+      const found = await sweepDiscovery(db, chainId, cfg.chain_id);
+      console.log(`rpc-directory: ${found} community endpoint(s) answering on ${cfg.chain_id}`);
+    } catch (e) {
+      console.error("rpc discovery failed:", (e as Error).message);
+    }
+  };
+  void discover();  // The periodic interval is armed only after boot completes: runIndexer can
   // reject below on an unreachable RPC and be retried every 15s, and an
   // interval armed here would leak on every failed attempt.
 
@@ -621,6 +638,7 @@ export async function runIndexer(cfg: ChainConfig): Promise<void> {
   // periodic location sweep (the first ran before RPC access, above)
   setInterval(() => void sweep(), LOCATION_SWEEP_MS);
   setInterval(() => void syncMatchboxIdentities(), MATCHBOX_SYNC_MS);
+  setInterval(() => void discover(), DISCOVERY_SWEEP_MS);
 
   // backfill: backward from head to depth (archive node ⇒ no pruning boundary)
   void (async () => {
