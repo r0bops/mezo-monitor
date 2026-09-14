@@ -104,6 +104,9 @@ a:hover {
   display: flex;
   align-items: stretch;
   min-height: 100vh;
+  /* The sidebar is position:fixed (out of flow), so the content column is
+     offset by its width here; collapsed back to 0 in the mobile media query. */
+  padding-left: 244px;
 }
 .side {
   width: 244px;
@@ -113,9 +116,14 @@ a:hover {
   display: flex;
   flex-direction: column;
   padding: 24px 17px 18px;
-  position: sticky;
+  /* Fixed to the viewport's left edge for the whole page lifetime: page
+     scrolling can never move it. Internal scroll only if the viewport is
+     shorter than the sidebar itself. */
+  position: fixed;
   top: 0;
-  height: 100vh;
+  left: 0;
+  bottom: 0;
+  z-index: 50;
   overflow-y: auto;
 }
 .side nav {
@@ -241,6 +249,7 @@ a:hover {
 @media (max-width: 920px) {
   .shell {
     flex-direction: column;
+    padding-left: 0;
   }
   .side {
     width: 100%;
