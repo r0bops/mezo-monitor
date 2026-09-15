@@ -143,7 +143,7 @@ export function WorldMap({
       <div className="world-map-canvas">
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="xMidYMid slice"
+        preserveAspectRatio="xMidYMid meet"
         style={{ width: "100%", height: "100%", display: "block", transform: `scale(${zoom})`, transformOrigin: "50% 50%", transition: "transform .2s ease", ...(maxSvgHeight !== undefined ? { maxHeight: maxSvgHeight } : {}) }}
         role="img"
         aria-label="validator node locations world map"
@@ -169,15 +169,19 @@ export function WorldMap({
             <circle cx="15" cy="14" r=".5" fill="#91abc4" fillOpacity=".16" />
           </pattern>
         </defs>
-        <rect width={W} height={H} fill="url(#world-map-ocean)" rx={6} />
-        <rect width={W} height={H} fill="url(#world-map-halo)" rx={6} />
-        <rect width={W} height={H} fill="url(#world-map-dots)" opacity=".62" rx={6} />
+        {/* The letterbox-friendly backdrop: with preserveAspectRatio="meet"
+            the panel can be wider/taller than the world box, so the ocean,
+            halo and dot texture extend well past the viewBox and the bands
+            around the world stay seamless. */}
+        <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="url(#world-map-ocean)" />
+        <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="url(#world-map-halo)" />
+        <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="url(#world-map-dots)" opacity=".62" />
         {/* graticule: always drawn, the landmasses sit on top when available */}
         {Array.from({ length: 11 }, (_, i) => (
-          <line key={`h${i}`} x1={0} x2={W} y1={(i * H) / 12 + H / 24} y2={(i * H) / 12 + H / 24} stroke="#2a4866" strokeOpacity=".5" strokeWidth={0.42} />
+          <line key={`h${i}`} x1={-W} x2={W * 2} y1={(i * H) / 12 + H / 24} y2={(i * H) / 12 + H / 24} stroke="#2a4866" strokeOpacity=".5" strokeWidth={0.42} />
         ))}
         {Array.from({ length: 11 }, (_, i) => (
-          <line key={`v${i}`} y1={0} y2={H} x1={(i * W) / 12 + W / 24} x2={(i * W) / 12 + W / 24} stroke="#2a4866" strokeOpacity=".5" strokeWidth={0.42} />
+          <line key={`v${i}`} y1={-H} y2={H * 2} x1={(i * W) / 12 + W / 24} x2={(i * W) / 12 + W / 24} stroke="#2a4866" strokeOpacity=".5" strokeWidth={0.42} />
         ))}
         {/* Land mixes the tertiary text token into the ocean colour, so it
             stays visible in BOTH themes — plain --panel is white-on-white in
