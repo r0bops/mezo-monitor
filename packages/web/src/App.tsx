@@ -6,7 +6,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useDashboard } from "./useDashboard";
 import { Overview } from "./pages/Overview";
 import { Validators } from "./pages/Validators";
-import { ValidatorSet } from "./pages/ValidatorSet";
 import { Metrics } from "./pages/Metrics";
 import { ApiDocs } from "./pages/ApiDocs";
 import { Settings } from "./pages/Settings";
@@ -23,7 +22,6 @@ export type Theme = "dark" | "light";
 type PageId =
   | "overview"
   | "validators"
-  | "vset"
   | "blocks"
   | "transactions"
   | "metrics"
@@ -35,7 +33,6 @@ type PageId =
 const NAV: { id: PageId; label: string; d: string }[] = [
   { id: "overview", label: "Overview", d: "M4 4h5v5H4zM11 4h5v3h-5zM4 12h5v4H4zM11 10h5v6h-5z" },
   { id: "validators", label: "Validators", d: "M4 6h12M4 10h12M4 14h12" },
-  { id: "vset", label: "Validator Set", d: "M10 3l6 3.5v7L10 17l-6-3.5v-7z" },
   { id: "blocks", label: "Blocks", d: "m10 3 6 3.5v7L10 17l-6-3.5v-7zM4 6.5l6 3.5 6-3.5M10 10v7" },
   { id: "transactions", label: "Transactions", d: "M4 7h12m0 0-3-3m3 3-3 3M16 13H4m0 0 3-3m-3 3 3 3" },
   { id: "metrics", label: "Metrics", d: "M4 15l4-5 3 3 5-7" },
@@ -52,7 +49,6 @@ const NAV: { id: PageId; label: string; d: string }[] = [
 const TITLES: Record<PageId, string> = {
   overview: "Network Overview",
   validators: "Validators",
-  vset: "Validator Set",
   blocks: "Blocks",
   transactions: "Transactions",
   metrics: "Metrics",
@@ -65,7 +61,6 @@ const TITLES: Record<PageId, string> = {
 const SUBTITLES: Record<PageId, string> = {
   overview: "Real-time insights into the Mezo network, secured by Pathrock Network.",
   validators: "Validator performance, identity, uptime, and network status.",
-  vset: "Track voting power and changes to the active validator set.",
   blocks: "Recent indexed blocks, proposers, transactions, and consensus commits.",
   transactions: "Recent Mezo transactions decoded by the network explorer.",
   metrics: "Network health and consensus performance over time.",
@@ -300,7 +295,6 @@ export default function App() {
             />
           )}
           {page === "validators" && <Validators d={d} selected={selected} onSelect={setSelected} win={win} onWindow={setWin} />}
-          {page === "vset" && <ValidatorSet d={d} />}
           {page === "blocks" && <Blocks d={d} live={live} />}
           {page === "transactions" && <Transactions d={d} live={live} />}
           {page === "metrics" && <Metrics d={d} hours={metricsHours} onHours={setMetricsHours} />}
@@ -462,7 +456,7 @@ function Sidebar({
       <div className="brand-by">by Pathrock Network</div>
 
       <nav>
-        {NAV.flatMap((n) => {
+        {NAV.map((n) => {
           const item = (
           <a
             key={n.id}
@@ -490,9 +484,7 @@ function Sidebar({
             <span>{n.label}</span>
           </a>
           );
-          if (n.id !== "vset") return [item];
-          return [item,
-          ];
+          return item;
         })}
       </nav>
       <div className="pathrock-card">
