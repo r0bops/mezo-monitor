@@ -244,10 +244,8 @@ export function Validators({
         })()}
       </div>
 
-      <section style={{ ...panel, overflow: "hidden", marginBottom: 16 }}>
-        <WorldMap validators={d.validators} />
-      </section>
-
+      {/* Table first — the reference puts the dense rows front and center;
+          the geographic map supports them from below the fold. */}
       <section style={{ ...panel, overflowX: "auto" }}>
         <div
           style={{
@@ -317,6 +315,10 @@ export function Validators({
           </span>
         </div>
       </section>
+
+      <section style={{ ...panel, overflow: "hidden" }}>
+        <WorldMap validators={d.validators} />
+      </section>
     </div>
   );
 }
@@ -354,7 +356,7 @@ function FullRow({
         gridTemplateColumns: COLS,
         alignItems: "center",
         padding: "0 16px",
-        height: 48,
+        height: 54,
         borderBottom: "1px solid var(--line)",
         cursor: "pointer",
         background: selected ? "var(--brandSoft)" : "transparent",
@@ -388,10 +390,10 @@ function FullRow({
           address={v.address}
           avatarUrl={v.avatar_url}
           title={v.moniker ? `${v.moniker} logo` : undefined}
-          size={20}
+          size={26}
         />
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-          <span style={{ font: `500 12.5px/1 ${mono}`, color: selected ? TX : TX2, whiteSpace: "nowrap" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+          <span style={{ font: `600 13px/1 ${mono}`, color: selected ? TX : TX2, whiteSpace: "nowrap" }}>
             {short(v.address)}
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
@@ -399,15 +401,12 @@ function FullRow({
               <span
                 title={`moniker (chain): ${v.moniker}`}
                 style={{
-                  font: `400 10px/1 ${sans}`,
+                  font: `400 10.5px/1 ${sans}`,
                   color: TX2,
-                  padding: "3px 7px",
-                  borderRadius: 5,
-                  background: "var(--panel2)",
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
-                  maxWidth: 120,
+                  maxWidth: 140,
                 }}
               >
                 {v.moniker}
@@ -566,17 +565,19 @@ function LabelEditor({
       }}
       style={{
         border: "none",
-        background: "transparent",
+        background: label ? "var(--panel2)" : "transparent",
+        boxShadow: label ? "inset 0 0 0 1px var(--line)" : "none",
+        borderRadius: 5,
         cursor: "text",
-        padding: 0,
+        padding: label ? "3px 7px" : 0,
         textAlign: "left",
-        font: `400 10.5px/1 ${sans}`,
+        font: `400 10px/1 ${sans}`,
         color: label ? TX2 : TX3,
         maxWidth: 200,
         overflow: "hidden",
         textOverflow: "ellipsis",
         whiteSpace: "nowrap",
-        height: 12,
+        height: label ? undefined : 12,
       }}
     >
       {label ?? "label…"}
