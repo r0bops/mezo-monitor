@@ -185,7 +185,7 @@ export function Overview({
           className="map-panel"
           style={{ ...panel, overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}
         >
-          <WorldMap validators={d.validators} maxSvgHeight={svgCap} />
+          <WorldMap validators={d.validators} maxSvgHeight={svgCap} selected={selected} />
         </section>
       </div>
 

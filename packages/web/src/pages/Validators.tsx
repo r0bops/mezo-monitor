@@ -247,7 +247,7 @@ export function Validators({
       </div>
 
       <section className="validators-map-panel" style={{ ...panel, overflow: "hidden" }}>
-        <WorldMap validators={d.validators} maxSvgHeight={360} />
+        <WorldMap validators={d.validators} maxSvgHeight={360} selected={selected} />
       </section>
 
       <ValidatorLowerPanels validators={d.validators} />

@@ -56,15 +56,21 @@ export function statusColorOf(status: Validator["status"]): string {
 export function WorldMap({
   validators,
   maxSvgHeight,
+  selected,
 }: {
   validators: Validator[];
   /** Clamp the map so the whole Overview fold fits short viewports; the
    *  viewBox letterboxes inside the smaller box instead of clipping. */
   maxSvgHeight?: number;
+  /** Consensus address of the validator selected in the table, if any —
+   *  its marker is highlighted in the brand colour. */
+  selected?: string | null;
 }) {
   const [paths, setPaths] = useState<string[] | null>(landPaths);
+  const [zoom, setZoom] = useState(1);
   /** Hovered validator + cursor position (px, relative to this container). */
   const [hover, setHover] = useState<{ v: Validator; x: number; y: number } | null>(null);
+  const [litAddress, setLitAddress] = useState<string | null>(null);
 
   useEffect(() => {
     if (landPaths !== null) return;
@@ -86,6 +92,22 @@ export function WorldMap({
     };
   }, []);
 
+  useEffect(() => {
+    let timer: number | undefined;
+    const onProduced = (event: Event) => {
+      const address = (event as CustomEvent<{ address?: string }>).detail?.address;
+      if (!address) return;
+      setLitAddress(address);
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(() => setLitAddress(null), 2200);
+    };
+    window.addEventListener("mezo:block-produced", onProduced);
+    return () => {
+      window.removeEventListener("mezo:block-produced", onProduced);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, []);
+
   const placed = validators.filter(
     (v): v is Validator & { location: NonNullable<Validator["location"]> } =>
       v.location !== null && v.location.lat !== null && v.location.lon !== null,
@@ -104,7 +126,8 @@ export function WorldMap({
           flexWrap: "wrap",
         }}
       >
-        <span style={{ font: `500 12px/1 ${sans}`, color: TX3 }}>validator network</span>
+        <span className="world-map-info" aria-hidden="true">i</span>
+        <span style={{ font: `600 12px/1 ${sans}`, color: TX }}>Validator Network</span>
         <span style={{ font: `400 11px/1 ${mono}`, color: TX3 }}>
           {validators.length} validators · {countries} countries · {cities} cities
           {validators.length - placed.length > 0
@@ -117,31 +140,53 @@ export function WorldMap({
           <span><Dot c={BAD} /> inactive</span>
         </span>
       </div>
+      <div className="world-map-canvas">
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        style={{ width: "100%", height: "auto", display: "block", ...(maxSvgHeight !== undefined ? { maxHeight: maxSvgHeight } : {}) }}
+        preserveAspectRatio="xMidYMid slice"
+        style={{ width: "100%", height: "100%", display: "block", transform: `scale(${zoom})`, transformOrigin: "50% 50%", transition: "transform .2s ease", ...(maxSvgHeight !== undefined ? { maxHeight: maxSvgHeight } : {}) }}
         role="img"
         aria-label="validator node locations world map"
       >
-        <rect width={W} height={H} fill="var(--panel2)" rx={6} />
+        <defs>
+          <linearGradient id="world-map-ocean" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#122941" />
+            <stop offset="0.52" stopColor="#0c2035" />
+            <stop offset="1" stopColor="#081827" />
+          </linearGradient>
+          <radialGradient id="world-map-halo" cx="50%" cy="39%" r="65%">
+            <stop offset="0" stopColor="#2f668e" stopOpacity=".2" />
+            <stop offset=".58" stopColor="#173957" stopOpacity=".08" />
+            <stop offset="1" stopColor="#071523" stopOpacity="0" />
+          </radialGradient>
+          <pattern id="world-map-dots" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r=".7" fill="#9bb8d4" fillOpacity=".18" />
+            <circle cx="14" cy="11" r=".45" fill="#6c91b1" fillOpacity=".14" />
+          </pattern>
+          <pattern id="world-map-land-texture" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M-5 18L2 11M3 22L22 3M14 24L24 14" fill="none" stroke="#8ca8c4" strokeOpacity=".16" strokeWidth=".55" />
+            <circle cx="5" cy="5" r=".65" fill="#a9bfd5" fillOpacity=".2" />
+            <circle cx="15" cy="14" r=".5" fill="#91abc4" fillOpacity=".16" />
+          </pattern>
+        </defs>
+        <rect width={W} height={H} fill="url(#world-map-ocean)" rx={6} />
+        <rect width={W} height={H} fill="url(#world-map-halo)" rx={6} />
+        <rect width={W} height={H} fill="url(#world-map-dots)" opacity=".62" rx={6} />
         {/* graticule: always drawn, the landmasses sit on top when available */}
         {Array.from({ length: 11 }, (_, i) => (
-          <line key={`h${i}`} x1={0} x2={W} y1={(i * H) / 12 + H / 24} y2={(i * H) / 12 + H / 24} stroke="var(--line)" strokeWidth={0.4} />
+          <line key={`h${i}`} x1={0} x2={W} y1={(i * H) / 12 + H / 24} y2={(i * H) / 12 + H / 24} stroke="#2a4866" strokeOpacity=".5" strokeWidth={0.42} />
         ))}
         {Array.from({ length: 11 }, (_, i) => (
-          <line key={`v${i}`} y1={0} y2={H} x1={(i * W) / 12 + W / 24} x2={(i * W) / 12 + W / 24} stroke="var(--line)" strokeWidth={0.4} />
+          <line key={`v${i}`} y1={0} y2={H} x1={(i * W) / 12 + W / 24} x2={(i * W) / 12 + W / 24} stroke="#2a4866" strokeOpacity=".5" strokeWidth={0.42} />
         ))}
         {/* Land mixes the tertiary text token into the ocean colour, so it
             stays visible in BOTH themes — plain --panel is white-on-white in
             light mode. */}
         {(paths ?? []).map((d, i) => (
-          <path
-            key={i}
-            d={d}
-            fill="color-mix(in srgb, var(--tx3) 32%, var(--panel2))"
-            stroke="var(--line2)"
-            strokeWidth={0.5}
-          />
+          <g key={i}>
+            <path d={d} fill="color-mix(in srgb, #4b6381 62%, var(--panel2))" fillOpacity={0.9} stroke="#4b6683" strokeOpacity={0.62} strokeWidth={0.55} />
+            <path d={d} fill="url(#world-map-land-texture)" fillOpacity={0.82} stroke="none" />
+          </g>
         ))}
         {/* dots after land so they sit on top; later same-city dots offset by hash jitter */}
         {placed.map((v) => {
@@ -151,21 +196,28 @@ export function WorldMap({
           // Same-city validators would overlap exactly; jitter deterministically.
           const j = jitter(v.address);
           const hovered = hover?.v.address === v.address;
+          const lit = litAddress === v.address;
+          const picked = selected === v.address;
           return (
-            <g key={v.address}>
+            <g key={v.address} transform={`translate(${x + j.dx} ${y + j.dy})`}>
+              <circle className="world-map-marker-glow" cx={0} cy={0} r={10} fill={picked ? "var(--brand)" : statusColorOf(v.status)} />
+              <circle className="world-map-marker-ring" cx={0} cy={0} r={6.5} fill="none" stroke={picked ? "var(--brand)" : statusColorOf(v.status)} strokeOpacity={picked ? ".9" : ".55"} strokeWidth={picked ? 1.2 : .8} />
+              {lit && <circle className="map-light-ring" cx={0} cy={0} r={6} fill="none" stroke={statusColorOf(v.status)} strokeWidth={1.5} />}
+              {picked && <circle className="map-selected-ring" cx={0} cy={0} r={10.5} fill="none" stroke="var(--brand)" strokeWidth={1.4} />}
               <circle
-                cx={x + j.dx}
-                cy={y + j.dy}
-                r={hovered ? 5.5 : 4}
-                fill={statusColorOf(v.status)}
-                fillOpacity={0.9}
-                stroke="var(--panel2)"
+                cx={0}
+                cy={0}
+                r={picked || lit || hovered ? 5.5 : 4}
+                fill={picked ? "var(--brand)" : statusColorOf(v.status)}
+                fillOpacity={0.95}
+                stroke={picked ? "#fff" : "var(--panel2)"}
+                strokeOpacity={picked ? 0.85 : 1}
                 strokeWidth={1}
               />
               {/* generous invisible hit area so dense clusters stay hoverable */}
               <circle
-                cx={x + j.dx}
-                cy={y + j.dy}
+                cx={0}
+                cy={0}
                 r={9}
                 fill="transparent"
                 onMouseMove={(e) => {
@@ -178,6 +230,13 @@ export function WorldMap({
           );
         })}
       </svg>
+      <div className="world-map-controls" aria-label="Map controls">
+        <button type="button" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(1.45, +(value + .12).toFixed(2)))}>+</button>
+        <button type="button" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(.82, +(value - .12).toFixed(2)))}>−</button>
+        <button type="button" aria-label="Reset map view" onClick={() => setZoom(1)}>◉</button>
+      </div>
+      <span className="world-map-distribution"><span aria-hidden="true">▥</span> Global validator distribution</span>
+      </div>
 
       {hover && (
         <div
