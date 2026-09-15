@@ -178,13 +178,24 @@ a:hover {
 .pathrock-card small { display:block; color:var(--tx3); font-size:10px; line-height:1.45; margin-top:7px; }
 .pathrock-orbit { width:42px; height:42px; flex:none; object-fit:contain; filter:drop-shadow(0 0 7px rgba(255,59,124,.2)); }
 .page-subtitle { color:var(--tx2); font:400 13px/1.4 Inter,sans-serif; }
-/* Content frame: capped and centered in the space right of the sidebar, so
-   ultra-wide windows (or zooming out) show a composed page instead of a
-   strip stretched edge to edge. Zooming in simply reflows — nothing ever
-   needs horizontal scrolling (html+body overflow-x hidden above). */
+/* Content frame: symmetric on the WHOLE window — sidebar included. The
+   frame breathes between 692px and 1520px so there is always equal space
+   either side of it; with the sidebar eating 244px left, its share of the
+   margin is subtracted (floored at the sidebar edge). Below 1180px the
+   sidebar becomes a top bar and the frame goes full width. */
 .main-content {
+  /* border-box so the cap includes the 28px paddings, and flex override so
+     the inline flex:1 grow cannot swallow the width clamp — without these
+     the frame fills all available space and centering is meaningless. */
+  box-sizing: border-box;
+  flex: 0 1 auto !important;
+  width: clamp(692px, calc(100vw - 488px), 1520px);
   max-width: 1520px;
-  margin: 0 auto;
+  margin-left: max(
+    0px,
+    calc((100vw - clamp(692px, calc(100vw - 488px), 1520px)) / 2 - 244px)
+  );
+  margin-right: auto;
 }
 .global-search { position:relative; display:flex; align-items:center; flex:1 1 auto; width:auto; min-width:0; max-width:760px; height:42px; color:var(--tx2); }
 .global-search > svg { position:absolute; left:13px; pointer-events:none; }
@@ -291,10 +302,14 @@ a:hover {
   }
 }
 
-@media (max-width: 920px) {
+@media (max-width: 1180px) {
   .shell {
     flex-direction: column;
     padding-left: 0;
+  }
+  .main-content {
+    width: 100%;
+    margin-left: 0;
   }
   .side {
     width: 100%;
