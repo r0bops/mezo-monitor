@@ -4,6 +4,7 @@ import type { Dashboard } from "../useDashboard";
 import type { Slot, Validator } from "../api";
 import { WorldMap } from "../components/WorldMap";
 import { Pipeline } from "../components/Pipeline";
+import { ValidatorDrop } from "../components/ValidatorDrop";
 import {
   BAD,
   BRAND,
@@ -28,7 +29,6 @@ import {
 } from "../components/ui";
 import { agoFrom, area, clampPct, fill, fmt, pct, pts, secs, short } from "../lib";
 
-const WINDOWS = [100, 500, 1000];
 
 export function Overview({
   d,
@@ -271,7 +271,7 @@ function HeightTile({
   const max = Math.max(1, ...spark);
   return (
     <div style={tile}>
-      <Label>Latest Indexed Height</Label>
+      <MetricHeading icon="block" label="Latest Indexed Height" />
       <span style={{ ...bigValue, color: dash ? TX3 : TX }}>{dash ? "—" : fmt(height)}</span>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
         <span style={{ font: `500 11px/1.3 ${sans}`, color: TX2, whiteSpace: "nowrap" }}>
@@ -298,7 +298,7 @@ function HeightTile({
 function BlockTimeTile({ dash, ms, spark }: { dash: boolean; ms: number | null; spark: number[] }) {
   return (
     <div style={tile}>
-      <Label>Avg Block Time</Label>
+      <MetricHeading icon="clock" label="Avg Block Time" />
       <span style={{ ...bigValue, color: dash ? TX3 : TX }}>
         {dash || ms === null ? "—" : secs(ms / 1000)}
       </span>
@@ -345,7 +345,7 @@ function SigningTile({ dash, net }: { dash: boolean; net: Dashboard["net"] }) {
   const signedNow = net?.recent_signing.at(-1);
   return (
     <div style={tile}>
-      <Label>Signing Rate</Label>
+      <MetricHeading icon="signing" label="Signing Rate" />
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span style={{ ...bigValue, color: dash ? TX3 : degraded ? WARN : TX }}>
           {dash ? "—" : pct(rate)}
@@ -395,7 +395,7 @@ function ValidatorsTile({ dash, d }: { dash: boolean; d: Dashboard }) {
     : new Array(20).fill("var(--line)");
   return (
     <div style={tile}>
-      <Label>Active Validators</Label>
+      <MetricHeading icon="validators" label="Active Validators" />
       <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
         <span style={{ ...bigValue, color: dash ? TX3 : TX }}>
           {dash ? "—" : fmt(net?.active_validators ?? 0)}
@@ -435,7 +435,7 @@ function LagTile({ dash, d }: { dash: boolean; d: Dashboard }) {
         border: `1px solid ${warn ? "var(--warn)" : "var(--line)"}`,
       }}
     >
-      <Label>Indexer Lag</Label>
+      <MetricHeading icon="lag" label="Indexer Lag" />
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
         <span style={{ ...bigValue, color: fg }}>{dash || unknown ? "—" : fmt(lag)}</span>
         <span style={{ font: `500 12px/1 ${sans}`, color: TX3 }}>
@@ -476,6 +476,30 @@ function LagTile({ dash, d }: { dash: boolean; d: Dashboard }) {
 function padStart<T>(arr: T[], n: number, filler: T): T[] {
   if (arr.length >= n) return arr.slice(-n);
   return new Array(n - arr.length).fill(filler).concat(arr);
+}
+
+type MetricIcon = "block" | "clock" | "signing" | "validators" | "lag" | "health" | "changes";
+
+function MetricHeading({ icon, label }: { icon: MetricIcon; label: string }) {
+  return (
+    <div className="metric-heading">
+      <MetricGlyph icon={icon} />
+      <Label>{label}</Label>
+    </div>
+  );
+}
+
+function MetricGlyph({ icon }: { icon: MetricIcon }) {
+  const paths: Record<MetricIcon, string> = {
+    block: "M10 2.7 16.2 6v8L10 17.3 3.8 14V6L10 2.7ZM3.8 6 10 9.4 16.2 6M10 9.4v7.9",
+    clock: "M10 3.2a6.8 6.8 0 1 0 0 13.6 6.8 6.8 0 0 0 0-13.6ZM10 6.2v4l2.7 1.7",
+    signing: "m4 15 1.2-3.8L13.8 2.6a1.7 1.7 0 0 1 2.4 2.4L7.6 13.7 4 15Zm2.2-2.2 2.2 2.2M11.5 15.8H17",
+    validators: "M10 9a2.7 2.7 0 1 0 0-5.4A2.7 2.7 0 0 0 10 9Zm-5.3 7.2c.2-3 2-4.7 5.3-4.7s5.1 1.7 5.3 4.7M4.2 9a2.2 2.2 0 0 1 2-3.4M15.8 9a2.2 2.2 0 0 0-2-3.4",
+    lag: "M4 6.2 10 3l6 3.2-6 3.3-6-3.3ZM4 10.1l6 3.2 6-3.2M4 14l6 3 6-3",
+    health: "M10 16.8S3.2 13 3.2 8.5A3.4 3.4 0 0 1 10 7.1a3.4 3.4 0 0 1 6.8 1.4c0 4.5-6.8 8.3-6.8 8.3Z",
+    changes: "M6.3 8.6a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM13.8 9.2a2.2 2.2 0 1 0 0-4.4M2.8 16.5c.2-3 1.3-4.5 3.5-4.5s3.3 1.5 3.5 4.5M11.2 12.2c2.8-.9 4.7.5 5.2 3.8",
+  };
+  return <span className={`metric-glyph metric-glyph-${icon}`} aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" strokeLinejoin="round"><path d={paths[icon]} /></svg></span>;
 }
 
 /* ── validator table ────────────────────────────────────────────────────── */
@@ -812,276 +836,16 @@ function Row({
       </div>
 
       {open && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 11,
-            padding: "4px 16px 14px 46px",
-            background: "var(--panel2)",
-            borderBottom: "1px solid var(--line)",
-          }}
-        >
-          <div style={{ display: "flex", gap: 26, flexWrap: "wrap" }}>
-            <Detail label="First seen" value={fmt(v.first_seen_height)} />
-            <Detail label="Last seen" value={fmt(v.last_seen_height)} />
-            <Detail label="Voting power" value={fmt(v.voting_power)} />
-            <Detail label="Pub key" value={v.pub_key ?? "—"} truncate />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <Label>Signing history · {fmt(win)} blocks</Label>
-            <div
-              style={{
-                display: "flex",
-                gap: 2,
-                padding: 2,
-                borderRadius: 8,
-                background: "var(--panel)",
-                border: "1px solid var(--line)",
-              }}
-            >
-              {WINDOWS.map((w) => (
-                <button
-                  key={w}
-                  type="button"
-                  onClick={() => onWindow(w)}
-                  style={{
-                    padding: "4px 9px",
-                    borderRadius: 6,
-                    border: "none",
-                    cursor: "pointer",
-                    font: `600 10.5px/1 ${mono}`,
-                    background: win === w ? BRAND : "transparent",
-                    color: win === w ? "#fff" : TX2,
-                  }}
-                >
-                  {fmt(w)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <SigningHistoryGrid slots={slots} loading={loading} tip={tip} setTip={setTip} />
-          {summary && (
-            <div style={{ display: "flex", gap: 1, background: "var(--line)", borderRadius: 8, overflow: "hidden" }}>
-              <Summary label="Uptime (1,000)" value={pct(summary.uptime_1000, 2)} color={metricColor(summary.uptime_1000)} />
-              <Summary label={`Uptime (${fmt(longTarget)})`} value={pct(summary.uptime_10000, 2)} color={metricColor(summary.uptime_10000)} />
-              <Summary
-                label="Missed Streak"
-                value={String(summary.missed_streak)}
-                color={summary.missed_streak >= 3 ? BAD : summary.missed_streak > 0 ? WARN : TX}
-              />
-              <Summary label="Proposer Share" value={pct(summary.proposer_share_1000)} color={TX} />
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Detail({ label, value, truncate }: { label: string; value: string; truncate?: boolean }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-      <Label size={9}>{label}</Label>
-      <span
-        style={{
-          font: `500 11px/1 ${mono}`,
-          color: TX2,
-          overflow: truncate ? "hidden" : undefined,
-          textOverflow: truncate ? "ellipsis" : undefined,
-          whiteSpace: "nowrap",
-        }}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-/* ── signing heatmap panel ──────────────────────────────────────────────── */
-
-/**
- * The per-validator signing-slot heatmap, rendered inside an expanded row.
- * Same rendering rules as before the move: green = signed (fading with age),
- * red = missed, gray = not in the set; hover shows height + verdict.
- */
-function SigningHistoryGrid({
-  slots,
-  loading,
-  tip,
-  setTip,
-}: {
-  slots: Slot[];
-  loading: boolean;
-  tip: { i: number; x: number; y: number } | null;
-  setTip: (t: { i: number; x: number; y: number } | null) => void;
-}) {
-  const empty = slots.length === 0 && !loading;
-  // Rows fade with age so the newest activity reads first.
-  const rows = Math.max(1, Math.ceil(slots.length / 50));
-  const fadeMax = rows <= 2 ? 16 : 58;
-  const cells = slots.map((s, i) => {
-    const row = Math.floor(i / 50);
-    const p = Math.round(100 - (rows > 1 ? (row / (rows - 1)) * fadeMax : 0));
-    return {
-      bg:
-        s.signed === null
-          ? "var(--line2)"
-          : s.signed
-            ? `color-mix(in srgb, var(--ok) ${p}%, transparent)`
-            : BAD,
-      slot: s,
-    };
-  });
-  const missed = slots.filter((s) => s.signed === false).length;
-  const na = slots.filter((s) => s.signed === null).length;
-  const tipCell = tip ? cells[tip.i] : null;
-
-  if (empty) {
-    return (
-      <EmptyState
-        dashed
-        title="Awaiting selection"
-        text="Signing slots load when this row is selected and blocks are ingested."
-      />
-    );
-  }
-
-  return (
-    <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8 }}>
-      {loading && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(50,1fr)", gap: 3 }}>
-          {new Array(200).fill(0).map((_, i) => (
-            <span
-              key={i}
-              style={{
-                aspectRatio: "1",
-                borderRadius: 2,
-                background: "linear-gradient(90deg,var(--skel) 25%,var(--line) 50%,var(--skel) 75%)",
-                backgroundSize: "400% 100%",
-                animation: "shim 1.6s linear infinite",
-              }}
-            />
-          ))}
-        </div>
-      )}
-      {!loading && (
-        <>
-          <div
-            onMouseOver={(e) => {
-              const el = e.target as HTMLElement;
-              const i = el.getAttribute?.("data-i");
-              if (i == null) return;
-              setTip({ i: +i, x: el.offsetLeft + el.offsetWidth / 2, y: el.offsetTop - 6 });
-            }}
-            onMouseLeave={() => setTip(null)}
-            style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(50,1fr)", gap: 3 }}
-          >
-            {cells.map((c, i) => (
-              <span key={i} data-i={i} style={{ aspectRatio: "1", borderRadius: 2, background: c.bg }} />
-            ))}
-            {tip && tipCell && (
-              <div
-                style={{
-                  position: "absolute",
-                  zIndex: 5,
-                  pointerEvents: "none",
-                  left: tip.x,
-                  top: tip.y,
-                  transform: "translate(-50%,-100%)",
-                  padding: "7px 9px",
-                  borderRadius: 8,
-                  background: "var(--panel2)",
-                  border: "1px solid var(--line2)",
-                  boxShadow: "var(--shadow)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 2,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <span style={{ font: `600 10.5px/1 ${mono}`, color: TX }}>
-                  height {fmt(tipCell.slot.height)}
-                </span>
-                <span
-                  style={{
-                    font: `600 10px/1 ${sans}`,
-                    color: tipCell.slot.signed === null ? TX3 : tipCell.slot.signed ? OK : BAD,
-                  }}
-                >
-                  {tipCell.slot.signed === null
-                    ? "Not in validator set"
-                    : tipCell.slot.signed
-                      ? "Signed"
-                      : "Missed"}
-                </span>
-                <span style={{ font: `400 10px/1 ${sans}`, color: TX3 }}>
-                  {agoFrom(tipCell.slot.time)} ago
-                </span>
-              </div>
-            )}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, paddingTop: 2 }}>
-            <Legend color={OK} label="Signed" />
-            <Legend color={BAD} label="Missed" />
-            <Legend color="var(--line2)" label="Not in set" />
-            <span style={{ marginLeft: "auto", font: `400 10.5px/1 ${mono}`, color: TX3 }}>
-              {missed || na
-                ? `${missed} missed · ${na} not in set`
-                : `${slots.length} / ${slots.length} signed`}
-            </span>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function metricColor(v: number | null): string {
-  if (v === null) return TX3;
-  return v >= 99.9 ? OK : v >= 99 ? TX : WARN;
-}
-
-function Legend({ color, label }: { color: string; label: string }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, font: `500 10.5px/1 ${sans}`, color: TX2 }}>
-      <span style={{ width: 9, height: 9, borderRadius: 2, background: color }} />
-      {label}
-    </span>
-  );
-}
-
-function Summary({
-  label,
-  value,
-  color,
-  badge,
-}: {
-  label: string;
-  value: string;
-  color: string;
-  badge?: string;
-}) {
-  return (
-    <div style={{ background: "var(--panel)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 6 }}>
-      <Label size={9}>{label}</Label>
-      <span style={{ font: `600 17px/1 ${mono}`, color }}>{value}</span>
-      {badge && (
-        <span
-          style={{
-            display: "inline-flex",
-            alignSelf: "flex-start",
-            alignItems: "center",
-            gap: 4,
-            padding: "2px 6px",
-            borderRadius: 5,
-            background: "var(--warnSoft)",
-            font: `600 9px/1.3 ${sans}`,
-            color: WARN,
-          }}
-        >
-          {badge}
-        </span>
+        <ValidatorDrop
+          v={summary ?? v}
+          win={win}
+          onWindow={onWindow}
+          slots={slots}
+          loading={loading}
+          tip={tip}
+          setTip={setTip}
+          longTarget={longTarget}
+        />
       )}
     </div>
   );
@@ -1137,7 +901,7 @@ function NetworkHealth({ d, dash }: { d: Dashboard; dash: boolean }) {
 
   return (
     <section style={{ ...panel, padding: "15px 16px 16px", display: "flex", flexDirection: "column", gap: 13 }}>
-      <h3 style={{ margin: 0, font: `600 12.5px/1 ${sans}`, color: TX }}>Network Health</h3>
+      <MetricHeading icon="health" label="Network Health" />
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", flex: "none", background: verdict.color }} />
         <span style={{ font: `600 13px/1.3 ${sans}`, color: verdict.color }}>{verdict.text}</span>
@@ -1195,14 +959,17 @@ function MiniChart({
   return (
     <section style={{ ...panel, padding: "15px 16px 12px", display: "flex", flexDirection: "column", gap: 11 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-        <h3 style={{ margin: 0, font: `600 12.5px/1 ${sans}`, color: TX }}>{title}</h3>
+        <div className="analytics-heading">
+          <MetricGlyph icon={title === "Block Time" ? "clock" : "signing"} />
+          <h3 style={{ margin: 0, font: `600 12.5px/1 ${sans}`, color: TX }}>{title}</h3>
+        </div>
         <span style={{ font: `400 10px/1 ${sans}`, color: TX3 }}>last 60 min</span>
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
         <span style={{ font: `600 20px/1 ${mono}`, color: dash ? TX3 : TX }}>{dash ? "—" : now}</span>
         <span style={{ font: `500 10.5px/1 ${sans}`, color: TX3 }}>current</span>
       </div>
-      <div style={{ position: "relative", flex: 1, minHeight: 96 }}>
+      <div style={{ position: "relative", flex: 1, minHeight: 144 }}>
         {!dash ? (
           <TimeSeriesChart
             values={series}
@@ -1211,7 +978,7 @@ function MiniChart({
             max={max}
             stroke={stroke}
             fillColor={fillColor}
-            height={96}
+            height="fill"
             compact
             formatValue={formatValue}
             formatTime={(t) => new Date(t).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
@@ -1223,10 +990,10 @@ function MiniChart({
             ))}
           </svg>
         )}
-        <span style={{ position: "absolute", left: 0, top: -6, font: `400 8.5px/1 ${mono}`, color: TX3 }}>
+        <span style={{ position: "absolute", zIndex: 2, left: 0, top: 1, padding: "1px 3px", borderRadius: 3, background: "var(--panel)", font: `400 8.5px/1 ${mono}`, color: TX3 }}>
           {topLabel}
         </span>
-        <span style={{ position: "absolute", left: 0, bottom: -6, font: `400 8.5px/1 ${mono}`, color: TX3 }}>
+        <span style={{ position: "absolute", zIndex: 2, left: 0, bottom: 1, padding: "1px 3px", borderRadius: 3, background: "var(--panel)", font: `400 8.5px/1 ${mono}`, color: TX3 }}>
           {bottomLabel}
         </span>
       </div>
@@ -1241,7 +1008,10 @@ function SetChanges({ d }: { d: Dashboard }) {
   const events = (d.set?.changes ?? []).slice(0, 5);
   return (
     <section style={{ ...panel, padding: "15px 16px 14px", display: "flex", flexDirection: "column", gap: 11 }}>
-      <h3 style={{ margin: 0, font: `600 12.5px/1 ${sans}`, color: TX }}>Recent Validator Set Changes</h3>
+      <div className="analytics-heading">
+        <MetricGlyph icon="changes" />
+        <h3 style={{ margin: 0, font: `600 12.5px/1 ${sans}`, color: TX }}>Recent Validator Set Changes</h3>
+      </div>
       {d.bootstrap && (
         <span style={{ font: `400 11px/1.45 ${sans}`, color: TX3, paddingBottom: 2 }}>
           Genesis membership only. No churn recorded since bootstrap.

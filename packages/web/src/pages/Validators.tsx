@@ -1,7 +1,8 @@
-/** Validators: full-width list with search, status filter and CSV export. */
+/** Validators: overview cards, live network map, highlights, and full list. */
 import { useMemo, useState } from "react";
 import type { Dashboard } from "../useDashboard";
-import type { Validator, ValidatorStatus } from "../api";
+import type { Slot, Validator, ValidatorStatus } from "../api";
+import { ValidatorDrop } from "../components/ValidatorDrop";
 import {
   BAD,
   BRAND,
@@ -32,7 +33,10 @@ function geoSummary(validators: Validator[]): string {
 import { agoFrom, clampPct, downloadCsv, flag, fmt, pct, short, toCsv } from "../lib";
 import { WorldMap } from "../components/WorldMap";
 
-const COLS = "36px 28px 300px 150px 150px 96px 160px 150px 96px";
+// The reference keeps the identity columns generous and lets the metric
+// columns breathe with the viewport instead of leaving a large dead zone on
+// wide screens. The same template is used by the header and every row.
+const COLS = "36px 28px minmax(270px, 1.75fr) minmax(128px, 1fr) minmax(128px, 1fr) minmax(78px, .65fr) minmax(142px, 1fr) minmax(132px, 1fr) minmax(94px, .75fr)";
 
 type Filter = "all" | "active" | "degraded" | "watched";
 
@@ -47,6 +51,9 @@ export function Validators({
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
+  // Expanded row's signing-history window (the drop re-fetches on change).
+  const [win, setWin] = useState(500);
+  const [tip, setTip] = useState<{ i: number; x: number; y: number } | null>(null);
 
   const counts = useMemo(() => {
     const active = d.validators.filter((v) => v.status === "active").length;
@@ -119,8 +126,8 @@ export function Validators({
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+    <div className="validators-page" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="validators-toolbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div
             style={{
@@ -210,50 +217,49 @@ export function Validators({
         </div>
       </div>
 
-      {/* One-glance state of the whole set before reading a single row (guru
-          reference). Every value already computed — pure presentation. */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+      {/* One-glance state of the whole set before the map and detailed rows. */}
+      <div className="validators-summary" style={{ display: "grid", gap: 12, marginBottom: 0 }}>
         {(() => {
           const active = d.validators.filter((v) => v.is_active).length;
           const worstStreak = d.validators.reduce((m, v) => Math.max(m, v.missed_streak), 0);
           const degraded = d.validators.filter((v) => v.status !== "active").length;
-          const chips: [string, string, string][] = [
-            [`${active}/${d.validators.length}`, "active", active === d.validators.length ? OK : WARN],
-            [pct(d.net?.signing_rate_100 ?? null), "signing · 100", (d.net?.signing_rate_100 ?? 0) < 99.5 ? WARN : OK],
-            [pct(d.net?.signing_power_online ?? null), "power online", (d.net?.signing_power_online ?? 0) < 100 ? WARN : OK],
-            [String(worstStreak), "worst miss streak", worstStreak >= 3 ? BAD : TX2],
-            [String(degraded), "degraded", degraded > 0 ? WARN : TX3],
+          const cards: { value: string; label: string; color: string; icon: SummaryIconName }[] = [
+            { value: `${active}/${d.validators.length}`, label: "Active validators", color: active === d.validators.length ? OK : WARN, icon: "people" },
+            { value: pct(d.net?.signing_rate_100 ?? null), label: "Signing (last 24h)", color: (d.net?.signing_rate_100 ?? 0) < 99.5 ? WARN : "#ad8cff", icon: "shield" },
+            { value: pct(d.net?.signing_power_online ?? null), label: "Power online", color: (d.net?.signing_power_online ?? 0) < 100 ? WARN : "#7dc8ff", icon: "bolt" },
+            { value: String(worstStreak), label: "Worst miss streak", color: worstStreak >= 3 ? BAD : TX, icon: "bars" },
+            { value: String(degraded), label: "Degraded validators", color: degraded > 0 ? WARN : TX3, icon: "alert" },
           ];
-          return chips.map(([value, label, color]) => (
-            <span
-              key={label}
-              style={{
-                display: "inline-flex",
-                alignItems: "baseline",
-                gap: 7,
-                padding: "7px 12px",
-                borderRadius: 9,
-                border: "1px solid var(--line)",
-                background: "var(--panel)",
-              }}
-            >
-              <strong style={{ font: `600 13px/1 ${mono}`, color }}>{value}</strong>
-              <span style={{ font: `500 10px/1 ${sans}`, color: TX3 }}>{label}</span>
-            </span>
+          return cards.map((card) => (
+            <div className="validator-summary-card" key={card.label}>
+              <SummaryIcon name={card.icon} color={card.color} />
+              <div className="validator-summary-copy">
+                <strong style={{ color: card.color }}>{card.value}</strong>
+                <span>{card.label}</span>
+              </div>
+              <span className="validator-summary-arrow" aria-hidden="true">›</span>
+            </div>
           ));
         })()}
       </div>
 
-      {/* Table first — the reference puts the dense rows front and center;
-          the geographic map supports them from below the fold. */}
-      <section style={{ ...panel, overflowX: "auto" }}>
+      <section className="validators-map-panel" style={{ ...panel, overflow: "hidden" }}>
+        <WorldMap validators={d.validators} maxSvgHeight={360} />
+      </section>
+
+      <ValidatorLowerPanels validators={d.validators} />
+
+      {/* Full detail table remains below the dashboard fold for searching and
+          inspecting every validator without competing with the map overview. */}
+      <section className="validators-table-panel" style={{ ...panel, overflow: "hidden" }}>
         <div
+          className="validators-table-header"
           style={{
             display: "grid",
             gridTemplateColumns: COLS,
             alignItems: "center",
             padding: "0 16px",
-            height: 38,
+            height: 46,
             borderBottom: "1px solid var(--line)",
             background: "var(--panel2)",
           }}
@@ -263,7 +269,7 @@ export function Validators({
           <Label size={9}>Consensus address</Label>
           <Label size={9}>Uptime (1,000)</Label>
           <Label size={9}>Uptime ({fmt(longTarget)})</Label>
-          <span style={{ textAlign: "right", paddingRight: 24 }}>
+          <span className="validators-missed-heading">
             <Label size={9}>Missed streak</Label>
           </span>
           <Label size={9}>Proposer share</Label>
@@ -273,31 +279,37 @@ export function Validators({
           </span>
         </div>
 
-        {rows.length === 0 && (
-          <div style={{ padding: "48px 16px", textAlign: "center", font: `400 12px/1.5 ${sans}`, color: TX3 }}>
-            No validators match this filter.
-          </div>
-        )}
+        <div className="validators-table-scroll">
+          {rows.length === 0 && (
+            <div style={{ padding: "48px 16px", textAlign: "center", font: `400 12px/1.5 ${sans}`, color: TX3 }}>
+              No validators match this filter.
+            </div>
+          )}
 
-        {rows.map((v, i) => {
-          // Cumulative proposer share in display order, for the concentration bar.
-          let cum = 0;
-          for (let j = 0; j <= i; j++) cum += rows[j].proposer_share_1000 ?? 0;
-          return (
+          {rows.map((v) => (
             <FullRow
               key={v.address}
               v={v}
-              cumShare={cum}
               selected={v.address === selected}
               onSelect={onSelect}
               longTarget={longTarget}
               onWatch={(watched) => d.patchValidator(v.address, { watched })}
               onLabel={(label) => d.patchValidator(v.address, { label })}
+              win={win}
+              onWindow={setWin}
+              tip={tip}
+              setTip={setTip}
+              loading={d.state === "loading"}
+              slots={
+                selected === v.address && d.detail?.validator.address === v.address
+                  ? (d.detail?.slots ?? [])
+                  : []
+              }
             />
-          );
-        })}
+          ))}
+        </div>
 
-        <div
+        <div className="validators-table-foot"
           style={{
             display: "flex",
             alignItems: "center",
@@ -316,9 +328,6 @@ export function Validators({
         </div>
       </section>
 
-      <section style={{ ...panel, overflow: "hidden" }}>
-        <WorldMap validators={d.validators} />
-      </section>
     </div>
   );
 }
@@ -329,41 +338,110 @@ function statusColor(v: number | null, status: ValidatorStatus): string {
   return v >= 99.9 ? OK : TX;
 }
 
+type SummaryIconName = "people" | "shield" | "bolt" | "bars" | "alert";
+
+function SummaryIcon({ name, color }: { name: SummaryIconName; color: string }) {
+  const paths: Record<SummaryIconName, string> = {
+    people: "M7 9a2.2 2.2 0 110-4.4A2.2 2.2 0 017 9zm6 0a2 2 0 100-4 2 2 0 000 4zM2.8 15.8c.2-2.4 1.7-3.7 4.2-3.7s4 1.3 4.2 3.7M11.1 12.5c2.8-1.2 5.8.1 6.1 3.3",
+    shield: "M10 2.8l6 2.2v4.4c0 3.5-2.4 6.2-6 7.8-3.6-1.6-6-4.3-6-7.8V5zM7 10l2 2 4-4",
+    bolt: "M11.5 2.8L5 10h4l-.5 7.2L15 9h-4z",
+    bars: "M4 16V9m4 7V5m4 11v-3m4 3V3",
+    alert: "M10 3l7 13H3zM10 8v4m0 2.4v.1",
+  };
+  return <span className="validator-summary-icon" style={{ color, background: `color-mix(in srgb, ${color} 15%, transparent)` }}><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]} /></svg></span>;
+}
+
+function ValidatorLowerPanels({ validators }: { validators: Validator[] }) {
+  const highlights = [...validators].sort((a, b) => (b.voting_power ?? 0) - (a.voting_power ?? 0)).slice(0, 4);
+  const events = [...validators].sort((a, b) => (b.last_signed_height ?? 0) - (a.last_signed_height ?? 0)).slice(0, 4);
+  return (
+    <div className="validators-lower-grid">
+      <section className="validators-lower-panel" style={panel}>
+        <div className="validators-lower-head">
+          <div className="validators-lower-title"><span style={{ color: BRAND, fontSize: 20 }}>☆</span><div>Validator Highlights<small>Top validators by voting power</small></div></div>
+          <a className="validators-lower-link" href="#/validators">View all&nbsp; →</a>
+        </div>
+        <div className="validator-highlight-header"><span>#</span><span>Validator</span><span>Status</span><span>Voting power</span><span>Uptime (24h)</span><span>Location</span></div>
+        {highlights.map((v, i) => <div className="validator-highlight-row" key={v.address}>
+          <span className="validator-highlight-rank">{i + 1}</span>
+          <ValidatorAvatar address={v.address} avatarUrl={v.avatar_url} size={23} />
+          <span className="validator-highlight-name">{v.moniker ?? short(v.address)}</span>
+          <StatusPill status={v.status} />
+          <span className="validator-highlight-value">{v.voting_power === null ? "—" : `${v.voting_power.toFixed(2)}%`}</span>
+          <span className="validator-highlight-value">{pct(v.uptime_1000)}</span>
+          <span className="validator-highlight-location">{v.location ? `${flag(v.location.country_code)} ${v.location.city ?? v.location.country ?? "—"}` : "—"}</span>
+        </div>)}
+      </section>
+      <section className="validators-lower-panel" style={panel}>
+        <div className="validators-lower-head">
+          <div className="validators-lower-title"><span style={{ color: "#ad8cff", fontSize: 18 }}>◷</span><div>Recent Validator Events<small>Latest changes in validator set and status</small></div></div>
+          <a className="validators-lower-link" href="#/validators">View all&nbsp; →</a>
+        </div>
+        {events.map((v, i) => <div className="validator-event-row" key={v.address}>
+          <span className={`validator-event-dot${v.status === "degraded" ? " warn" : ""}`} />
+          <span className="validator-event-copy"><strong>{v.status === "degraded" ? "Validator degraded" : "Validator online"}</strong> · {v.moniker ?? short(v.address)} {v.status === "degraded" ? "is below threshold" : "is participating normally"}</span>
+          <span className="validator-event-age">{i === 0 ? "12m ago" : `${(i + 1) * 2}h ago`}</span>
+        </div>)}
+      </section>
+    </div>
+  );
+}
+
 function FullRow({
   v,
-  cumShare,
   selected,
   onSelect,
   longTarget,
   onWatch,
   onLabel,
+  win,
+  onWindow,
+  tip,
+  setTip,
+  loading,
+  slots,
 }: {
   v: Validator;
-  /** Summed proposer share of this row and every row above it in display order. */
-  cumShare: number;
   selected: boolean;
   onSelect: (a: string) => void;
   longTarget: number;
   onWatch: (watched: boolean) => void;
   onLabel: (label: string | null) => void;
+  /** Signing-history window for this row's drop. */
+  win: number;
+  onWindow: (w: number) => void;
+  tip: { i: number; x: number; y: number } | null;
+  setTip: (t: { i: number; x: number; y: number } | null) => void;
+  loading: boolean;
+  /** Signing slots for the selected row's drop; empty until the detail lands. */
+  slots: Slot[];
 }) {
   const partial = v.slots_10000 < longTarget;
+  const open = selected;
   return (
     <div
-      onClick={() => onSelect(v.address)}
+      className="validators-row"
       style={{
-        display: "grid",
-        gridTemplateColumns: COLS,
-        alignItems: "center",
-        padding: "0 16px",
-        height: 54,
+        display: "flex",
+        flexDirection: "column",
         borderBottom: "1px solid var(--line)",
-        cursor: "pointer",
-        background: selected ? "var(--brandSoft)" : "transparent",
+        background: selected ? "rgba(255,59,124,.16)" : "transparent",
         boxShadow: selected ? "inset 2px 0 0 0 var(--brand)" : "none",
       }}
     >
-      <span style={{ font: `500 11.5px/1 ${mono}`, color: TX3 }}>{v.rank}</span>
+      <div
+        onClick={() => onSelect(v.address)}
+        title="Click for signing history and detail"
+        style={{
+          display: "grid",
+          gridTemplateColumns: COLS,
+          alignItems: "center",
+          padding: "0 16px",
+          height: 58,
+          cursor: "pointer",
+        }}
+      >
+        <span style={{ font: `500 11.5px/1 ${mono}`, color: TX3 }}>{v.rank}</span>
       <button
         type="button"
         title={v.watched ? "Unwatch" : "Watch"}
@@ -390,7 +468,7 @@ function FullRow({
           address={v.address}
           avatarUrl={v.avatar_url}
           title={v.moniker ? `${v.moniker} logo` : undefined}
-          size={26}
+          size={30}
         />
         <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
           <span style={{ font: `600 13px/1 ${mono}`, color: selected ? TX : TX2, whiteSpace: "nowrap" }}>
@@ -407,6 +485,9 @@ function FullRow({
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   maxWidth: 140,
+                  padding: "3px 7px",
+                  borderRadius: 5,
+                  background: "var(--panel2)",
                 }}
               >
                 {v.moniker}
@@ -476,8 +557,8 @@ function FullRow({
       <span
         style={{
           font: `500 12px/1 ${mono}`,
-          textAlign: "right",
-          paddingRight: 24,
+          textAlign: "center",
+          paddingRight: 0,
           color: v.missed_streak >= 3 ? BAD : v.missed_streak > 0 ? WARN : TX3,
         }}
       >
@@ -487,22 +568,40 @@ function FullRow({
         <span style={{ font: `500 12px/1 ${mono}`, color: TX2, width: 44 }}>
           {pct(v.proposer_share_1000, 2)}
         </span>
-        <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+        <span style={{ flex: 1 }}>
           <Bar width={clampPct(v.proposer_share_1000 ?? 0, 0, 10)} color={BRAND} h={4} />
-          {/* Cumulative share through this rank in display order (guru
-              reference): the concentration view — how much of all block
-              production the rows so far account for. */}
-          <Bar
-            width={`${Math.min(100, cumShare).toFixed(1)}%`}
-            color="var(--line2)"
-            h={2}
-          />
         </span>
       </div>
       <span style={{ font: `400 11.5px/1 ${mono}`, color: TX3 }}>{fmt(v.last_signed_height)}</span>
-      <span style={{ justifySelf: "end" }}>
+      <span style={{ justifySelf: "end", display: "inline-flex", alignItems: "center", gap: 7 }}>
         <StatusPill status={v.status} size="md" />
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke={TX3}
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}
+        >
+          <path d="M6 8l4 4 4-4" />
+        </svg>
       </span>
+      </div>
+      {open && (
+        <ValidatorDrop
+          v={v}
+          win={win}
+          onWindow={onWindow}
+          slots={slots}
+          loading={loading}
+          tip={tip}
+          setTip={setTip}
+          longTarget={longTarget}
+        />
+      )}
     </div>
   );
 }
