@@ -148,6 +148,40 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
   const resolveAvatar = createAvatarResolver();
 
   /**
+   * EVM providers from Mezo's official RPC list — static, curated, paired
+   * RPC/WS URLs per provider. Probed server-side only.
+   */
+  const EVM_PROVIDERS: { label: string; http: string | null; ws: string | null }[] = [
+    { label: "Mezo (official)", http: "https://rpc-internal.mezo.org", ws: "wss://rpc-ws-internal.mezo.org" },
+    { label: "Boar Network", http: "https://mezo-mainnet.boar.network", ws: "wss://mezo-mainnet.boar.network" },
+    {
+      label: "Validation Cloud",
+      http: "https://mainnet.mezo.public.validationcloud.io",
+      ws: "wss://mainnet.mezo.public.validationcloud.io",
+    },
+    { label: "dRPC", http: "https://mezo.drpc.org", ws: "wss://mezo.drpc.org" },
+    { label: "Imperator", http: "https://rpc_evm-mezo.imperator.co", ws: "wss://ws_evm-mezo.imperator.co" },
+    { label: "RouteMe", http: "https://lb.routeme.sh/rpc/evm/31612", ws: null },
+  ];
+  const evmProbe = new CacheMap(async (url: string): Promise<{ healthy: boolean; height: number | null; latencyMs: number | null }> => {
+    const started = Date.now();
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const j = (await res.json()) as { result?: unknown };
+    const height = typeof j?.result === "string" && j.result.startsWith("0x") ? parseInt(j.result, 16) : null;
+    if (height === null) throw new Error("no eth_blockNumber result");
+    return { healthy: true, height, latencyMs: Date.now() - started };
+    // Throwing keeps failures OUT of the cache (a first-hit timeout would
+    // otherwise paint a working endpoint red for the whole TTL); the call
+    // site converts the throw into an honest unhealthy row.
+  }, 10 * 60_000);
+
+  /**
    * Same-origin avatar proxy: the dashboard's <img> tags point here instead
    * of at Matchbox's Supabase, so the public site's strict img-src 'self'
    * holds AND visitors' browsers never talk to a third party for logos.
@@ -323,14 +357,40 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     const chain = requireChain(reply);
     if (!chain) return;
     const rows = await rpcDirectory(pool, chain.id);
+    // EVM providers from Mezo's official list — one entry per provider with
+    // its RPC and WS URLs side by side. Probed server-side via
+    // eth_blockNumber (10-min cache), so the browser never touches them and
+    // the strict CSP holds. WebSockets cannot be fetch-probed: their health
+    // is simply not claimed.
+    const evm = await Promise.all(
+      EVM_PROVIDERS.map(async (p) => {
+        let probe: { healthy: boolean; height: number | null; latencyMs: number | null } | null = null;
+        if (p.http) {
+          try {
+            probe = await evmProbe.get(p.http);
+          } catch {
+            probe = { healthy: false, height: null, latencyMs: null };
+          }
+        }
+        return {
+          label: p.label,
+          rpc_url: p.http,
+          ws_url: p.ws,
+          healthy: probe ? probe.healthy : null,
+          latency_ms: probe?.latencyMs ?? null,
+          last_height: probe?.height ?? null,
+        };
+      }),
+    );
     return {
       chain_id: chain.chain_id,
-      count: rows.length,
+      count: rows.length + evm.length,
       endpoints: rows.map((e) => ({
         ...e,
         first_seen: e.first_seen ? e.first_seen.toISOString() : null,
         last_seen: e.last_seen ? e.last_seen.toISOString() : null,
       })),
+      evm,
     };
   });
 

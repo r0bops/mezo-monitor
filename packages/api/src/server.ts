@@ -2,7 +2,7 @@
  * Mezo Monitor — Fastify REST API + dashboard host.
  * Serves the React dashboard (packages/web/dist) at "/" and JSON at "/api/v1/*".
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
@@ -91,6 +91,21 @@ fastify.addHook("onSend", async (req, reply, payload) => {
 });
 
 registerRoutes(fastify, deps);
+
+/**
+ * Which web bundle is deployed. A long-lived tab keeps running the JS it
+ * loaded — no cache header fixes that — so the dashboard compares its own
+ * script against this and offers a reload when they diverge.
+ */
+const deployedWeb = (() => {
+  try {
+    const html = readFileSync(path.join(webDist, "index.html"), "utf8");
+    return html.match(/assets\/index-[^"]+\.js/)?.[0] ?? null;
+  } catch {
+    return null;
+  }
+})();
+fastify.get("/api/v1/version", async () => ({ web: deployedWeb }));
 
 const chainTimer = setInterval(() => void refreshChain(), CHAIN_REFRESH_MS);
 chainTimer.unref();

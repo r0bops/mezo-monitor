@@ -82,6 +82,25 @@ export default function App() {
   const [win, setWin] = useState(500);
   const [metricsHours, setMetricsHours] = useState(24);
   const [copied, setCopied] = useState<string | null>(null);
+  /** True when the deployed bundle differs from the one this tab runs. */
+  const [stale, setStale] = useState(false);
+
+  // A long-lived tab keeps executing the JS it loaded — no cache header can
+  // fix that (it bit us repeatedly: removed UI "still there", ticking). Poll
+  // the deployed bundle name and offer a reload when they diverge.
+  useEffect(() => {
+    const mine = document.querySelector('script[src*="assets/index-"]')?.getAttribute("src") ?? "";
+    const check = () =>
+      fetch("/api/v1/version")
+        .then((r) => r.json())
+        .then((v: { web: string | null }) => {
+          if (v.web && !mine.includes(v.web)) setStale(true);
+        })
+        .catch(() => {});
+    void check();
+    const id = setInterval(check, 60_000);
+    return () => clearInterval(id);
+  }, []);
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -368,6 +387,34 @@ export default function App() {
         </svg>
         Feedback
       </a>
+
+      {stale && (
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          style={{
+            position: "fixed",
+            right: 18,
+            bottom: 62,
+            zIndex: 41,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            height: 34,
+            padding: "0 13px",
+            borderRadius: 17,
+            border: "1px solid var(--brand)",
+            background: "var(--brandSoft)",
+            color: "var(--brand)",
+            font: `600 11px/1 ${sans}`,
+            cursor: "pointer",
+            boxShadow: "var(--shadow)",
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--brand)" }} />
+          Update available — reload
+        </button>
+      )}
     </div>
   );
 }

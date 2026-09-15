@@ -29,15 +29,26 @@ type DirectoryEntry = {
   last_seen: string | null;
 };
 
+type EvmProvider = {
+  label: string;
+  rpc_url: string | null;
+  ws_url: string | null;
+  healthy: boolean | null;
+  latency_ms: number | null;
+  last_height: number | null;
+};
+
 export function RpcDirectory({ d }: { d: Dashboard }) {
   const [rows, setRows] = useState<DirectoryEntry[] | null>(null);
+  const [evm, setEvm] = useState<EvmProvider[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
-    get<{ endpoints: DirectoryEntry[] }>("/api/v1/rpc-directory")
-      .then((r: { endpoints: DirectoryEntry[] }) => {
+    get<{ endpoints: DirectoryEntry[]; evm: EvmProvider[] }>("/api/v1/rpc-directory")
+      .then((r: { endpoints: DirectoryEntry[]; evm: EvmProvider[] }) => {
         setRows(r.endpoints);
+        setEvm(r.evm);
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
@@ -54,6 +65,24 @@ export function RpcDirectory({ d }: { d: Dashboard }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 980 }}>
+      <section style={{ ...panel, overflow: "hidden" }}>
+        <Head
+          title="EVM endpoints"
+          aside={`${evm?.length ?? 0} providers · Mezo's official list · probed server-side`}
+        />
+        <div style={gridStyle}>
+          {(evm ?? []).map((p) => (
+            <EvmCard key={p.label} p={p} copied={copied} onCopy={copy} />
+          ))}
+        </div>
+        {evm?.length === 0 && <LoadingOrError error={error} />}
+        <div style={{ padding: "0 18px 14px", font: `400 10.5px/1.5 ${sans}`, color: TX3 }}>
+          JSON-RPC (EVM side of Mezo) — what wallets and dapps connect to. Health is probed from
+          our server via <code>eth_blockNumber</code>; WebSocket URLs cannot be fetch-probed, so
+          their health is simply not claimed.
+        </div>
+      </section>
+
       <section style={{ ...panel, overflow: "hidden" }}>
         <Head
           title="Verified endpoints"
@@ -94,6 +123,133 @@ export function RpcDirectory({ d }: { d: Dashboard }) {
       </section>
     </div>
   );
+}
+
+/** One provider, two protocols: RPC and WS copy buttons side by side. */
+function EvmCard({
+  p,
+  copied,
+  onCopy,
+}: {
+  p: EvmProvider;
+  copied: string | null;
+  onCopy: (url: string) => void;
+}) {
+  const latencyColor =
+    p.latency_ms === null ? TX3 : p.latency_ms <= 250 ? OK : p.latency_ms <= 700 ? WARN : BAD;
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        borderRadius: 14,
+        border: "1px solid var(--line)",
+        background: "linear-gradient(145deg, var(--panel2), var(--panel))",
+        boxShadow: "var(--shadow)",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "13px 14px 0" }}>
+        {p.healthy !== null && (
+          <span
+            title={p.healthy ? "answered the last server-side probe" : "no answer at the last probe"}
+            style={{
+              width: 9,
+              height: 9,
+              borderRadius: "50%",
+              flex: "none",
+              boxShadow: p.healthy ? "0 0 7px var(--ok)" : "none",
+              background: p.healthy ? OK : BAD,
+            }}
+          />
+        )}
+        <span
+          style={{
+            font: `600 13px/1 ${sans}`,
+            color: TX,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
+          {p.label}
+        </span>
+        <span
+          style={{
+            font: `700 8.5px/1 ${sans}`,
+            letterSpacing: ".07em",
+            padding: "4px 8px",
+            borderRadius: 6,
+            flex: "none",
+            background: "var(--panel2)",
+            color: TX3,
+            border: "1px solid var(--line)",
+          }}
+        >
+          EVM
+        </span>
+      </div>
+
+      <div style={{ padding: "10px 14px 12px" }}>
+        <code
+          title={p.rpc_url ?? ""}
+          style={{
+            display: "block",
+            font: `500 11.5px/1.35 ${mono}`,
+            color: TX2,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            padding: "8px 10px",
+            borderRadius: 8,
+            background: "var(--panel2)",
+            border: "1px solid var(--line)",
+          }}
+        >
+          {p.rpc_url ?? p.ws_url}
+        </code>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 14px 12px" }}>
+        <Fact label="latency" value={p.latency_ms !== null ? `${p.latency_ms}ms` : "—"} color={latencyColor} />
+        <Fact label="height" value={p.last_height !== null ? fmt(p.last_height) : "—"} />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, margin: "0 14px 14px" }}>
+        <button
+          type="button"
+          disabled={!p.rpc_url}
+          onClick={() => p.rpc_url && onCopy(p.rpc_url)}
+          style={copyBtn(copied === p.rpc_url)}
+        >
+          {copied === p.rpc_url ? "✓ RPC copied" : "RPC"}
+        </button>
+        <button
+          type="button"
+          disabled={!p.ws_url}
+          onClick={() => p.ws_url && onCopy(p.ws_url)}
+          style={copyBtn(copied === p.ws_url)}
+        >
+          {copied === p.ws_url ? "✓ WS copied" : "WS"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function copyBtn(active: boolean): React.CSSProperties {
+  return {
+    flex: 1,
+    padding: "9px 12px",
+    borderRadius: 9,
+    border: `1px solid ${active ? OK : "var(--line)"}`,
+    background: active ? "var(--okSoft)" : "var(--panel2)",
+    color: active ? OK : TX,
+    font: `600 11px/1 ${sans}`,
+    cursor: "pointer",
+  };
 }
 
 function Card({ e, copied, onCopy }: { e: DirectoryEntry; copied: boolean; onCopy: () => void }) {
