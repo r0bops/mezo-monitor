@@ -184,17 +184,15 @@ a:hover {
    margin is subtracted (floored at the sidebar edge). Below 1180px the
    sidebar becomes a top bar and the frame goes full width. */
 .main-content {
-  /* border-box so the cap includes the 28px paddings, and flex override so
-     the inline flex:1 grow cannot swallow the width clamp — without these
-     the frame fills all available space and centering is meaningless. */
+  /* Fill the space beside the sidebar — no squeezed column — with a
+     generous cap: on ultra-wide windows the surplus splits evenly either
+     side of the frame, so the [sidebar + content] composition stays
+     balanced instead of stretching edge to edge. border-box keeps the cap
+     honest about the 28px paddings. */
   box-sizing: border-box;
-  flex: 0 1 auto !important;
-  width: clamp(692px, calc(100vw - 488px), 1520px);
-  max-width: 1520px;
-  margin-left: max(
-    0px,
-    calc((100vw - clamp(692px, calc(100vw - 488px), 1520px)) / 2 - 244px)
-  );
+  flex: 1 1 auto !important;
+  max-width: 1840px;
+  margin-left: auto;
   margin-right: auto;
 }
 .global-search { position:relative; display:flex; align-items:center; flex:1 1 auto; width:auto; min-width:0; max-width:760px; height:42px; color:var(--tx2); }
