@@ -57,7 +57,7 @@ export function RpcDirectory({ d }: { d: Dashboard }) {
   const copy = (url: string) => {
     void navigator.clipboard?.writeText(url);
     setCopied(url);
-    setTimeout(() => setCopied((c) => (c === url ? null : c)), 1400);
+    setTimeout(() => setCopied((c) => (c === url ? null : c)), 2600);
   };
 
   const configured = (rows ?? []).filter((r) => r.source === "configured");
@@ -221,6 +221,7 @@ function EvmCard({
         <button
           type="button"
           disabled={!p.rpc_url}
+          className={copied === p.rpc_url ? "copy-glow" : undefined}
           onClick={() => p.rpc_url && onCopy(p.rpc_url)}
           style={copyBtn(copied === p.rpc_url)}
         >
@@ -229,6 +230,7 @@ function EvmCard({
         <button
           type="button"
           disabled={!p.ws_url}
+          className={copied === p.ws_url ? "copy-glow" : undefined}
           onClick={() => p.ws_url && onCopy(p.ws_url)}
           style={copyBtn(copied === p.ws_url)}
         >
@@ -353,6 +355,7 @@ function Card({ e, copied, onCopy }: { e: DirectoryEntry; copied: boolean; onCop
       <button
         type="button"
         onClick={onCopy}
+        className={copied ? "copy-glow" : undefined}
         style={{
           margin: "0 14px 14px",
           padding: "9px 12px",

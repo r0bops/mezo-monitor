@@ -101,6 +101,27 @@ a:hover {
   }
 }
 
+/* Copy confirmations light up, hold, and fade off — attached whenever a
+   copy button enters its "copied" state; the state clears as the fade
+   ends, so the two stay in sync. */
+@keyframes copyGlow {
+  0% {
+    box-shadow: 0 0 0 rgba(53, 230, 176, 0);
+  }
+  12% {
+    box-shadow: 0 0 14px rgba(53, 230, 176, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 10px rgba(53, 230, 176, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(53, 230, 176, 0);
+  }
+}
+.copy-glow {
+  animation: copyGlow 2.6s ease-out forwards;
+}
+
 /* ── Layout shell ─────────────────────────────────────────────────────────
    The app renders inside .shell; the sidebar and page grids collapse on
    narrow viewports. Classes instead of inline styles because media queries

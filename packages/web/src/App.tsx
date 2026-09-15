@@ -140,7 +140,7 @@ export default function App() {
   const onCopy = useCallback((value: string) => {
     void copyText(value);
     setCopied(value);
-    setTimeout(() => setCopied((c) => (c === value ? null : c)), 1400);
+    setTimeout(() => setCopied((c) => (c === value ? null : c)), 2600);
   }, []);
 
   const net = d.net;

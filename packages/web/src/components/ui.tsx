@@ -192,6 +192,7 @@ export function CopyButton({
     <button
       type="button"
       title="Copy address"
+      className={copied ? "copy-glow" : undefined}
       onClick={(e) => {
         e.stopPropagation();
         onCopy(value);
