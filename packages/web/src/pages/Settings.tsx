@@ -1,8 +1,9 @@
 /** Settings: chain identity, capability flags, indexer config and theme. */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Dashboard } from "../useDashboard";
 import type { Theme } from "../App";
 import { probeNode, type NodeProbe } from "../nodeRpc";
+import { get } from "../api";
 import { BAD, BRAND, OK, TX, TX2, TX3, WARN, mono, panel, sans } from "../components/ui";
 import { fmt } from "../lib";
 
@@ -18,6 +19,15 @@ export function Settings({
   const cfg = d.config;
   const caps = cfg?.capabilities ?? d.net?.chain.capabilities;
   const [probes, setProbes] = useState<Record<number, NodeProbe | "loading">>({});
+  /** The build this page runs, vs the build the server has deployed — the
+   *  at-a-glance answer to "is it deployed?" without trusting anyone's
+   *  cache. Both shown in Indexer → Monitor. */
+  const [deployed, setDeployed] = useState<string | null>(null);
+  useEffect(() => {
+    get<{ web: string | null }>("/api/v1/version")
+      .then((v: { web: string | null }) => setDeployed(v.web))
+      .catch(() => {});
+  }, []);
 
   const runProbe = (id: number, url: string | null) => {
     if (!url) return;
@@ -39,6 +49,12 @@ export function Settings({
       ]
     : [];
 
+  // Which bundle THIS page is executing — same extraction the version check
+  // uses, so "yours" vs "deployed" below are directly comparable.
+  const running =
+    document.querySelector('script[src*="assets/index-"]')?.getAttribute("src")?.match(/index-([^.]+)\.js/)?.[1] ??
+    "?";
+  const deployedShort = deployed?.match(/index-([^.]+)\.js/)?.[1] ?? null;
   const indexerRows: [string, string][] = cfg
     ? [
         ["BACKFILL_DEPTH", `${fmt(cfg.indexer.backfill_depth)} blocks`],
@@ -46,7 +62,8 @@ export function Settings({
         ["Set poll interval", `${Math.round(cfg.indexer.poll_interval_ms / 1000)}s`],
         ["Database", cfg.indexer.database],
         ["Uptime windows", `${fmt(cfg.windows.short)} / ${fmt(cfg.windows.long)} blocks`],
-        ["Monitor", "mezo-monitor v0.1.0"],
+        ["Monitor", `mezo-monitor v0.1.0 · build ${running}`],
+        ["Deployed build", deployedShort ? `${deployedShort}${deployedShort === running ? " ✓ current" : " ≠ reload to update"}` : "—"],
       ]
     : [];
 
