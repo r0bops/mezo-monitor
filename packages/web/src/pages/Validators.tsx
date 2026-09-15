@@ -473,7 +473,13 @@ function FullRow({
       }}
     >
       <div
-        onClick={() => onSelect(v.address)}
+        onClick={() => {
+          // Any click on the row selects it (highlight + map node) and
+          // toggles the detail drop; the chevron does the same explicitly.
+          onSelect(v.address);
+          onToggle();
+        }}
+        title="Click to expand signing history and detail"
         style={{
           display: "grid",
           gridTemplateColumns: COLS,

@@ -145,11 +145,6 @@ export default function App() {
 
   const d = useDashboard({ live, selected, window: win, metricsHours });
 
-  // Default the detail panel to the first validator once data arrives.
-  useEffect(() => {
-    if (!selected && d.validators.length > 0) setSelected(d.validators[0].address);
-  }, [d.validators, selected]);
-
   const onCopy = useCallback((value: string) => {
     void copyText(value);
     setCopied(value);
