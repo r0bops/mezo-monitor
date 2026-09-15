@@ -59,9 +59,11 @@ export function RpcDirectory({ d }: { d: Dashboard }) {
           title="Verified endpoints"
           aside={`${configured.length} · the rotation this monitor runs on`}
         />
-        {configured.map((e) => (
-          <Card key={e.url} e={e} copied={copied === e.url} onCopy={() => copy(e.url)} />
-        ))}
+        <div style={gridStyle}>
+          {configured.map((e) => (
+            <Card key={e.url} e={e} copied={copied === e.url} onCopy={() => copy(e.url)} />
+          ))}
+        </div>
         {configured.length === 0 && <LoadingOrError error={error} />}
       </section>
 
@@ -70,9 +72,11 @@ export function RpcDirectory({ d }: { d: Dashboard }) {
           title="Community endpoints"
           aside={`${discovered.filter((x) => x.healthy).length} discovered on the P2P network`}
         />
-        {discovered.map((e) => (
-          <Card key={e.url} e={e} copied={copied === e.url} onCopy={() => copy(e.url)} />
-        ))}
+        <div style={gridStyle}>
+          {discovered.map((e) => (
+            <Card key={e.url} e={e} copied={copied === e.url} onCopy={() => copy(e.url)} />
+          ))}
+        </div>
         {discovered.length === 0 && !error && (
           <div style={{ padding: "20px 18px", font: `400 12px/1.5 ${sans}`, color: TX3 }}>
             No community endpoints discovered yet — the sweep probes the chain's peers hourly.
@@ -93,92 +97,165 @@ export function RpcDirectory({ d }: { d: Dashboard }) {
 }
 
 function Card({ e, copied, onCopy }: { e: DirectoryEntry; copied: boolean; onCopy: () => void }) {
-  const archive =
-    e.earliest_height !== null && e.earliest_height > 0 ? `archive from ${fmt(e.earliest_height)}` : null;
+  const verified = e.source === "configured";
+  // Latency reads at a glance: fast green, middling amber, slow red.
+  const latencyColor = e.latency_ms === null ? TX3 : e.latency_ms <= 150 ? OK : e.latency_ms <= 600 ? WARN : BAD;
+  const archiveDepth =
+    e.earliest_height !== null && e.earliest_height > 0
+      ? `from ${fmt(e.earliest_height)}`
+      : null;
   return (
     <div
       style={{
         display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "13px 18px",
-        borderBottom: "1px solid var(--line)",
+        flexDirection: "column",
+        borderRadius: 14,
+        border: `1px solid ${e.healthy ? "var(--line)" : "color-mix(in srgb, var(--bad) 35%, var(--line))"}`,
+        background: "linear-gradient(145deg, var(--panel2), var(--panel))",
+        boxShadow: "var(--shadow)",
+        overflow: "hidden",
       }}
     >
-      <span
-        title={e.healthy ? "answered the last probe" : "no answer at the last probe"}
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          flex: "none",
-          background: e.healthy ? (e.catching_up ? WARN : OK) : BAD,
-        }}
-      />
-      <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-          <span style={{ font: `600 12px/1 ${sans}`, color: TX, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {e.label ?? "unnamed node"}
-          </span>
-          <span
-            style={{
-              font: `600 8.5px/1 ${sans}`,
-              letterSpacing: ".06em",
-              padding: "3px 6px",
-              borderRadius: 5,
-              flex: "none",
-              background: e.source === "configured" ? "var(--brandSoft)" : "var(--panel2)",
-              color: e.source === "configured" ? "var(--brand)" : TX3,
-            }}
-          >
-            {e.source === "configured" ? "VERIFIED" : "DISCOVERED"}
-          </span>
-          {e.catching_up && (
-            <span style={{ font: `600 9px/1 ${sans}`, color: WARN, flex: "none" }}>CATCHING UP</span>
-          )}
-        </div>
+      {/* header: identity + status */}
+      <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "13px 14px 0" }}>
         <span
+          title={e.healthy ? "answered the last probe" : "no answer at the last probe"}
+          style={{
+            width: 9,
+            height: 9,
+            borderRadius: "50%",
+            flex: "none",
+            boxShadow: e.healthy ? `0 0 7px ${e.catching_up ? WARN : OK}` : "none",
+            background: e.healthy ? (e.catching_up ? WARN : OK) : BAD,
+          }}
+        />
+        <span
+          title={e.label ?? "the node announced no moniker"}
+          style={{
+            font: `600 13px/1 ${sans}`,
+            color: TX,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
+          {e.label ?? "unnamed node"}
+        </span>
+        <span
+          style={{
+            font: `700 8.5px/1 ${sans}`,
+            letterSpacing: ".07em",
+            padding: "4px 8px",
+            borderRadius: 6,
+            flex: "none",
+            background: verified ? "var(--brandSoft)" : "var(--panel2)",
+            color: verified ? "var(--brand)" : TX3,
+            border: "1px solid var(--line)",
+          }}
+        >
+          {verified ? "VERIFIED" : "DISCOVERED"}
+        </span>
+      </div>
+
+      {/* the URL, the thing people come for */}
+      <div style={{ padding: "10px 14px 12px" }}>
+        <code
           title={e.url}
           style={{
-            font: `500 11px/1 ${mono}`,
+            display: "block",
+            font: `500 11.5px/1.35 ${mono}`,
             color: TX2,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
+            padding: "8px 10px",
+            borderRadius: 8,
+            background: "var(--panel2)",
+            border: "1px solid var(--line)",
           }}
         >
           {e.url}
-        </span>
-        <span style={{ font: `400 10px/1 ${sans}`, color: TX3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {[
-            e.latency_ms !== null ? `${e.latency_ms}ms` : null,
-            e.last_height !== null ? `height ${fmt(e.last_height)}` : null,
-            archive,
-            e.last_seen ? `probed ${agoFrom(e.last_seen)} ago` : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </span>
+        </code>
       </div>
+
+      {/* facts, one element each so they scan independently */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 14px 12px" }}>
+        <Fact label="latency" value={e.latency_ms !== null ? `${e.latency_ms}ms` : "—"} color={latencyColor} />
+        <Fact label="height" value={e.last_height !== null ? fmt(e.last_height) : "—"} />
+        <Fact
+          label="archive"
+          value={archiveDepth ?? "pruned"}
+          color={archiveDepth ? OK : TX3}
+          title={archiveDepth ? `serves history back to block ${fmt(e.earliest_height!)}` : "history depth unknown or shallow"}
+        />
+        {e.catching_up && <Fact label="sync" value="catching up" color={WARN} />}
+        {e.last_seen && <Fact label="probed" value={`${agoFrom(e.last_seen)} ago`} />}
+      </div>
+
       <button
         type="button"
         onClick={onCopy}
         style={{
-          flex: "none",
-          padding: "7px 13px",
-          borderRadius: 8,
-          border: "1px solid var(--line)",
+          margin: "0 14px 14px",
+          padding: "9px 12px",
+          borderRadius: 9,
+          border: `1px solid ${copied ? OK : "var(--line)"}`,
           background: copied ? "var(--okSoft)" : "var(--panel2)",
-          color: copied ? OK : TX2,
-          font: `600 10.5px/1 ${sans}`,
+          color: copied ? OK : TX,
+          font: `600 11px/1 ${sans}`,
           cursor: "pointer",
         }}
       >
-        {copied ? "Copied" : "Copy URL"}
+        {copied ? "✓ Copied to clipboard" : "Copy URL"}
       </button>
     </div>
   );
 }
+
+/** One fact as its own chip: label above value, so the grid of facts reads
+ *  as separate elements instead of one dot-separated line. */
+function Fact({
+  label,
+  value,
+  color,
+  title,
+}: {
+  label: string;
+  value: string;
+  color?: string;
+  title?: string;
+}) {
+  return (
+    <span
+      title={title ?? `${label}: ${value}`}
+      style={{
+        display: "inline-flex",
+        flexDirection: "column",
+        gap: 3,
+        padding: "6px 10px",
+        borderRadius: 8,
+        background: "var(--panel2)",
+        border: "1px solid var(--line)",
+        minWidth: 62,
+      }}
+    >
+      <span style={{ font: `600 8px/1 ${sans}`, letterSpacing: ".08em", textTransform: "uppercase", color: TX3 }}>
+        {label}
+      </span>
+      <span style={{ font: `600 11px/1 ${mono}`, color: color ?? TX2, whiteSpace: "nowrap" }}>{value}</span>
+    </span>
+  );
+}
+
+/** Responsive card grid: 3 across on wide screens, fewer as space shrinks. */
+const gridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+  gap: 12,
+  padding: "14px 16px 16px",
+};
 
 function Head({ title, aside }: { title: string; aside: string }) {
   return (
