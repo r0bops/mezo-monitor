@@ -1,10 +1,9 @@
 /** Overview: stat tiles, validator table, signing heatmap and analytics row. */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Dashboard } from "../useDashboard";
-import type { Slot, Validator } from "../api";
+import type { Validator } from "../api";
 import { WorldMap } from "../components/WorldMap";
 import { Pipeline } from "../components/Pipeline";
-import { ValidatorDrop } from "../components/ValidatorDrop";
 import {
   BAD,
   BRAND,
@@ -35,8 +34,6 @@ export function Overview({
   live,
   selected,
   onSelect,
-  win,
-  onWindow,
   copied,
   onCopy,
 }: {
@@ -44,13 +41,9 @@ export function Overview({
   live: boolean;
   selected: string | null;
   onSelect: (a: string) => void;
-  win: number;
-  onWindow: (w: number) => void;
   copied: string | null;
   onCopy: (v: string) => void;
 }) {
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [tip, setTip] = useState<{ i: number; x: number; y: number } | null>(null);
   /**
    * The map panel's height drives the validator table's: the table scrolls
    * internally and both panels end level. The map's height is its own (svg
@@ -182,15 +175,9 @@ export function Overview({
           d={d}
           selected={selected}
           onSelect={onSelect}
-          expanded={expanded}
-          setExpanded={setExpanded}
           copied={copied}
           onCopy={onCopy}
           backfill={backfill}
-          win={win}
-          onWindow={onWindow}
-          tip={tip}
-          setTip={setTip}
           height={mapH}
         />
         <section
@@ -511,29 +498,17 @@ function ValidatorTable({
   d,
   selected,
   onSelect,
-  expanded,
-  setExpanded,
   copied,
   onCopy,
   backfill,
-  win,
-  onWindow,
-  tip,
-  setTip,
   height,
 }: {
   d: Dashboard;
   selected: string | null;
   onSelect: (a: string) => void;
-  expanded: string | null;
-  setExpanded: (a: string | null) => void;
   copied: string | null;
   onCopy: (v: string) => void;
   backfill: boolean;
-  win: number;
-  onWindow: (w: number) => void;
-  tip: { i: number; x: number; y: number } | null;
-  setTip: (t: { i: number; x: number; y: number } | null) => void;
   /** Matched to the map panel so both columns end level (undefined while measuring). */
   height?: number;
 }) {
@@ -619,23 +594,10 @@ function ValidatorTable({
               v={v}
               selected={v.address === selected}
               onSelect={onSelect}
-              open={expanded === v.address}
-              onToggle={() => setExpanded(expanded === v.address ? null : v.address)}
               copied={copied === v.address}
               onCopy={onCopy}
               backfill={backfill}
               longTarget={d.net?.long_window.target ?? 10_000}
-              win={win}
-              onWindow={onWindow}
-              tip={tip}
-              setTip={setTip}
-              loading={loading}
-              slots={
-                selected === v.address && d.detail?.validator.address === v.address
-                  ? (d.detail?.slots ?? [])
-                  : []
-              }
-              summary={selected === v.address && d.detail?.validator.address === v.address ? (d.detail?.validator ?? null) : null}
             />
           ))}
           </div>
@@ -680,36 +642,18 @@ function Row({
   v,
   selected,
   onSelect,
-  open,
-  onToggle,
   copied,
   onCopy,
   backfill,
   longTarget,
-  win,
-  onWindow,
-  tip,
-  setTip,
-  loading,
-  slots,
-  summary,
 }: {
   v: Validator;
   selected: boolean;
   onSelect: (a: string) => void;
-  open: boolean;
-  onToggle: () => void;
   copied: boolean;
   onCopy: (v: string) => void;
   backfill: boolean;
   longTarget: number;
-  win: number;
-  onWindow: (w: number) => void;
-  tip: { i: number; x: number; y: number } | null;
-  setTip: (t: { i: number; x: number; y: number } | null) => void;
-  loading: boolean;
-  slots: Slot[];
-  summary: Validator | null;
 }) {
   const deg = v.status === "degraded";
   const partial = v.slots_10000 < longTarget;
@@ -726,10 +670,7 @@ function Row({
       }}
     >
       <div
-        onClick={() => {
-          onSelect(v.address);
-          if (!open) onToggle(); // expanding the dropdown needs the detail loaded
-        }}
+        onClick={() => onSelect(v.address)}
         style={{
           display: "grid",
           gridTemplateColumns: COLS,
@@ -808,45 +749,8 @@ function Row({
         <span style={{ justifySelf: "end" }}>
           <StatusPill status={v.status} />
         </span>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle();
-          }}
-          style={{
-            justifySelf: "end",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 20,
-            height: 20,
-            border: "none",
-            background: "none",
-            padding: 0,
-            cursor: "pointer",
-            color: TX3,
-            transform: open ? "rotate(180deg)" : "none",
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 8l4 4 4-4" />
-          </svg>
-        </button>
+        <span />
       </div>
-
-      {open && (
-        <ValidatorDrop
-          v={summary ?? v}
-          win={win}
-          onWindow={onWindow}
-          slots={slots}
-          loading={loading}
-          tip={tip}
-          setTip={setTip}
-          longTarget={longTarget}
-        />
-      )}
     </div>
   );
 }

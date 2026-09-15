@@ -44,15 +44,18 @@ export function Validators({
   d,
   selected,
   onSelect,
+  win,
+  onWindow,
 }: {
   d: Dashboard;
   selected: string | null;
   onSelect: (a: string) => void;
+  /** Signing-history window for the expanded row's drop (App-owned: it drives the detail fetch). */
+  win: number;
+  onWindow: (w: number) => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
-  // Expanded row's signing-history window (the drop re-fetches on change).
-  const [win, setWin] = useState(500);
   const [tip, setTip] = useState<{ i: number; x: number; y: number } | null>(null);
 
   const counts = useMemo(() => {
@@ -296,7 +299,7 @@ export function Validators({
               onWatch={(watched) => d.patchValidator(v.address, { watched })}
               onLabel={(label) => d.patchValidator(v.address, { label })}
               win={win}
-              onWindow={setWin}
+              onWindow={onWindow}
               tip={tip}
               setTip={setTip}
               loading={d.state === "loading"}

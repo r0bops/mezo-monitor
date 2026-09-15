@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDashboard } from "./useDashboard";
-import { Overview, verdictFor } from "./pages/Overview";
+import { Overview } from "./pages/Overview";
 import { Validators } from "./pages/Validators";
 import { ValidatorSet } from "./pages/ValidatorSet";
 import { Metrics } from "./pages/Metrics";
@@ -12,9 +12,11 @@ import { ApiDocs } from "./pages/ApiDocs";
 import { Settings } from "./pages/Settings";
 import { DirectRpc } from "./pages/DirectRpc";
 import { RpcDirectory } from "./pages/RpcDirectory";
-import { OK, TX, TX2, TX3, WARN, mono, sans } from "./components/ui";
+import { Blocks } from "./pages/Blocks";
+import { Transactions } from "./pages/Transactions";
+import { OK, TX, TX2, TX3, sans } from "./components/ui";
 import { EndpointSwitcher } from "./components/EndpointSwitcher";
-import { agoText, copyText, fmt } from "./lib";
+import { copyText } from "./lib";
 
 export type Theme = "dark" | "light";
 
@@ -22,6 +24,8 @@ type PageId =
   | "overview"
   | "validators"
   | "vset"
+  | "blocks"
+  | "transactions"
   | "metrics"
   | "endpoints"
   | "rpc"
@@ -32,6 +36,8 @@ const NAV: { id: PageId; label: string; d: string }[] = [
   { id: "overview", label: "Overview", d: "M4 4h5v5H4zM11 4h5v3h-5zM4 12h5v4H4zM11 10h5v6h-5z" },
   { id: "validators", label: "Validators", d: "M4 6h12M4 10h12M4 14h12" },
   { id: "vset", label: "Validator Set", d: "M10 3l6 3.5v7L10 17l-6-3.5v-7z" },
+  { id: "blocks", label: "Blocks", d: "m10 3 6 3.5v7L10 17l-6-3.5v-7zM4 6.5l6 3.5 6-3.5M10 10v7" },
+  { id: "transactions", label: "Transactions", d: "M4 7h12m0 0-3-3m3 3-3 3M16 13H4m0 0 3-3m-3 3 3 3" },
   { id: "metrics", label: "Metrics", d: "M4 15l4-5 3 3 5-7" },
   { id: "endpoints", label: "RPC Endpoints", d: "M4 10l6-6M4 10l6 6M4 10h12" },
   { id: "rpc", label: "Direct RPC", d: "M7 4C4.8 9 4.8 11 7 16M13 4c2.2 5 2.2 7 0 12M4 10h12" },
@@ -47,6 +53,8 @@ const TITLES: Record<PageId, string> = {
   overview: "Network Overview",
   validators: "Validators",
   vset: "Validator Set",
+  blocks: "Blocks",
+  transactions: "Transactions",
   metrics: "Metrics",
   endpoints: "RPC Endpoints",
   rpc: "Direct RPC",
@@ -58,6 +66,8 @@ const SUBTITLES: Record<PageId, string> = {
   overview: "Real-time insights into the Mezo network, secured by Pathrock Network.",
   validators: "Validator performance, identity, uptime, and network status.",
   vset: "Track voting power and changes to the active validator set.",
+  blocks: "Recent indexed blocks, proposers, transactions, and consensus commits.",
+  transactions: "Recent Mezo transactions decoded by the network explorer.",
   metrics: "Network health and consensus performance over time.",
   endpoints: "Usable Mezo RPC endpoints — verified and community-discovered.",
   rpc: "Inspect the connected Mezo RPC endpoint directly.",
@@ -67,18 +77,21 @@ const SUBTITLES: Record<PageId, string> = {
 
 const VALID_PAGES = new Set<string>(NAV.map((n) => n.id));
 
-function pageFromHash(): PageId {
+function pageFromLocation(): PageId {
   const h = window.location.hash.replace(/^#\/?/, "");
-  return (VALID_PAGES.has(h) ? h : "overview") as PageId;
+  if (VALID_PAGES.has(h)) return h as PageId;
+  const path = window.location.pathname.replace(/^\/+|\/+$/g, "");
+  return (VALID_PAGES.has(path) ? path : "overview") as PageId;
 }
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem("mezo-theme") as Theme) ?? "dark",
   );
-  const [page, setPage] = useState<PageId>(pageFromHash);
+  const [page, setPage] = useState<PageId>(pageFromLocation);
   const [live, setLive] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
+  // Signing-history window for the selected validator's drop (Validators page).
   const [win, setWin] = useState(500);
   const [metricsHours, setMetricsHours] = useState(24);
   const [copied, setCopied] = useState<string | null>(null);
@@ -109,7 +122,7 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    const onHash = () => setPage(pageFromHash());
+    const onHash = () => setPage(pageFromLocation());
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -143,9 +156,6 @@ export default function App() {
     setTimeout(() => setCopied((c) => (c === value ? null : c)), 2600);
   }, []);
 
-  const net = d.net;
-  const verdict = verdictFor(d);
-
   return (
     <div
       data-theme={theme}
@@ -154,15 +164,15 @@ export default function App() {
         color: TX,
         minHeight: "100vh",
         fontVariantNumeric: "tabular-nums",
-        paddingBottom: 24,
+        paddingBottom: 8,
       }}
     >
       <div className="shell">
         <Sidebar page={page} go={go} d={d} />
 
-        <main className="main-content" style={{ flex: 1, minWidth: 0, padding: "0 28px 30px", display: "flex", flexDirection: "column" }}>
+        <main className="main-content" style={{ flex: 1, minWidth: 0, padding: "0 28px 12px", display: "flex", flexDirection: "column" }}>
           <header
-            className="topbar"
+            className={page === "validators" ? "topbar validators-global-header" : "topbar"}
             style={{
               display: "flex",
               alignItems: "center",
@@ -190,6 +200,7 @@ export default function App() {
               <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search blocks, transactions, validators, addresses…" aria-label="Search the network" />
               <kbd>⌘ K</kbd>
             </form>
+            <PriceTicker />
             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
               <EndpointSwitcher d={d} />
               <button
@@ -275,7 +286,7 @@ export default function App() {
             </div>
           </header>
 
-          <div className="page-heading">
+          <div className={page === "validators" ? "page-heading validators-global-heading" : "page-heading"}>
             <div>
               <h1>{TITLES[page]}</h1>
               <span className="page-subtitle">{SUBTITLES[page]}</span>
@@ -289,70 +300,20 @@ export default function App() {
               live={live}
               selected={selected}
               onSelect={setSelected}
-              win={win}
-              onWindow={setWin}
               copied={copied}
               onCopy={onCopy}
             />
           )}
-          {page === "validators" && <Validators d={d} selected={selected} onSelect={setSelected} />}
+          {page === "validators" && <Validators d={d} selected={selected} onSelect={setSelected} win={win} onWindow={setWin} />}
           {page === "vset" && <ValidatorSet d={d} />}
+          {page === "blocks" && <Blocks d={d} live={live} />}
+          {page === "transactions" && <Transactions d={d} live={live} />}
           {page === "metrics" && <Metrics d={d} hours={metricsHours} onHours={setMetricsHours} />}
           {page === "endpoints" && <RpcDirectory d={d} />}
           {page === "rpc" && <DirectRpc d={d} />}
           {page === "api" && <ApiDocs d={d} />}
           {page === "settings" && <Settings d={d} theme={theme} onTheme={setTheme} />}
 
-          <div
-            style={{
-              marginTop: 16,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 20,
-              padding: "12px 16px",
-              borderRadius: 10,
-              border: "1px solid var(--line)",
-              background: "var(--panel)",
-              boxShadow: "var(--shadow)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  font: `600 11.5px/1 ${sans}`,
-                  color: verdict.color,
-                  flex: "none",
-                }}
-              >
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
-                {verdict.text}
-              </span>
-              <Divider />
-              <span style={{ font: `400 11.5px/1 ${sans}`, color: TX2, flex: "none" }}>
-                {net
-                  ? `${fmt(net.active_validators)} / ${fmt(net.total_validators)} validators active`
-                  : "Validator set unavailable"}
-              </span>
-              <Divider />
-              <span style={{ font: `400 11.5px/1.4 ${sans}`, color: TX3, minWidth: 0 }}>
-                One-block commit lag is inherent to CometBFT — signatures for block H arrive with
-                block H+1.
-              </span>
-            </div>
-            <span
-              style={{
-                font: `400 11.5px/1 ${mono}`,
-                color: d.state === "stopped" || d.state === "dberror" ? WARN : TX3,
-                flex: "none",
-              }}
-            >
-              Updated {agoText(d.agoSeconds)} ago
-            </span>
-          </div>
         </main>
       </div>
 
@@ -419,8 +380,61 @@ export default function App() {
   );
 }
 
-function Divider() {
-  return <span style={{ width: 1, height: 12, background: "var(--line)", flex: "none" }} />;
+type MezoPrice = { usd: number; usd_24h_change: number };
+
+/** Small market snapshot for the header. Market data is optional: a provider
+ * outage leaves the monitor usable and never renders a fake zero price. */
+function PriceTicker() {
+  const [price, setPrice] = useState<MezoPrice | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch("/api/v1/market/mezo");
+        if (!response.ok) throw new Error(`price ${response.status}`);
+        const json = (await response.json()) as Partial<MezoPrice>;
+        const usd = json.usd;
+        const change = json.usd_24h_change;
+        if (!Number.isFinite(usd) || !Number.isFinite(change)) throw new Error("invalid price payload");
+        if (!cancelled) {
+          setPrice({ usd: usd as number, usd_24h_change: change as number });
+          setFailed(false);
+        }
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    };
+    void load();
+    const timer = window.setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const change = price?.usd_24h_change ?? null;
+  const direction = change === null ? "flat" : change >= 0 ? "up" : "down";
+  return (
+    <div className={`price-ticker price-${direction}`} title="MEZO market price · 24-hour change">
+      <span className="price-label">MEZO</span>
+      {price ? (
+        <>
+          <strong>{formatUsd(price.usd)}</strong>
+          <span className="price-change">{change! >= 0 ? "↑" : "↓"} {Math.abs(change!).toFixed(1)}%</span>
+        </>
+      ) : (
+        <span className="price-pending">{failed ? "—" : "loading"}</span>
+      )}
+    </div>
+  );
+}
+
+function formatUsd(value: number) {
+  if (value >= 1) return `$${value.toFixed(2)}`;
+  if (value >= 0.01) return `$${value.toFixed(4)}`;
+  return `$${value.toPrecision(3)}`;
 }
 
 function Sidebar({
@@ -433,7 +447,16 @@ function Sidebar({
   d: ReturnType<typeof useDashboard>;
 }) {
   return (
-    <aside className="side">
+    <aside
+      className="side"
+      onWheel={(e) => {
+        // The navigation is a viewport-anchored rail, never a scroll
+        // container. Stop wheel momentum over its empty space from bubbling
+        // into the document and making the rail appear to drift.
+        e.preventDefault();
+      }}
+      onTouchMove={(e) => e.preventDefault()}
+    >
       <div className="brand-lockup">
         <img className="mezo-wave" src="/mezo-icon.png" alt="" aria-hidden="true" />
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -474,8 +497,6 @@ function Sidebar({
           );
           if (n.id !== "vset") return [item];
           return [item,
-            <span className="nav-disabled" key="blocks"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m10 3 6 3.5v7L10 17l-6-3.5v-7zM4 6.5l6 3.5 6-3.5M10 10v7"/></svg>Blocks</span>,
-            <span className="nav-disabled" key="transactions"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 7h12m0 0-3-3m3 3-3 3M16 13H4m0 0 3-3m-3 3 3 3"/></svg>Transactions</span>,
           ];
         })}
       </nav>
