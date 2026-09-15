@@ -12,7 +12,7 @@ import { ApiDocs } from "./pages/ApiDocs";
 import { Settings } from "./pages/Settings";
 import { DirectRpc } from "./pages/DirectRpc";
 import { RpcDirectory } from "./pages/RpcDirectory";
-import { BAD, OK, TX, TX2, TX3, WARN, mono, sans } from "./components/ui";
+import { OK, TX, TX2, TX3, WARN, mono, sans } from "./components/ui";
 import { EndpointSwitcher } from "./components/EndpointSwitcher";
 import { agoText, copyText, fmt } from "./lib";
 
@@ -126,7 +126,6 @@ export default function App() {
 
   const net = d.net;
   const verdict = verdictFor(d);
-  const banner = bannerFor(d);
 
   return (
     <div
@@ -264,29 +263,6 @@ export default function App() {
             </div>
             <span className="slogan">Decentralized today. Brighter tomorrow.</span>
           </div>
-
-          {banner && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 11,
-                padding: "12px 14px",
-                borderRadius: 10,
-                marginBottom: 16,
-                border: "1px solid var(--line)",
-                background: banner.bg,
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke={banner.fg} strokeWidth="1.6" strokeLinecap="round" style={{ flex: "none", marginTop: 1 }}>
-                <path d={banner.icon} />
-              </svg>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                <span style={{ font: `600 12.5px/1.3 ${sans}`, color: banner.fg }}>{banner.title}</span>
-                <span style={{ font: `400 12px/1.45 ${sans}`, color: TX2 }}>{banner.text}</span>
-              </div>
-            </div>
-          )}
 
           {page === "overview" && (
             <Overview
@@ -462,44 +438,4 @@ function Sidebar({
       </div>
     </aside>
   );
-}
-
-function bannerFor(d: ReturnType<typeof useDashboard>) {
-  const w = d.net?.long_window;
-  switch (d.state) {
-    case "stopped":
-      return {
-        title: "Indexer stopped",
-        text: `Last block ingested at height ${fmt(d.net?.latest_indexed_height ?? null)}. Data on this page is ${fmt(d.net?.indexer_lag_blocks ?? null)} blocks behind chain head and is no longer updating.`,
-        fg: WARN,
-        bg: "var(--warnSoft)",
-        icon: "M10 6v5M10 14h.01M10 3l7.5 13h-15z",
-      };
-    case "dberror":
-      return {
-        title: "API unreachable",
-        text: `The dashboard cannot reach the API${d.error ? ` (${d.error})` : ""}. Metrics are unavailable until the connection is restored; values are shown as em-dashes rather than zeros.`,
-        fg: BAD,
-        bg: "var(--badSoft)",
-        icon: "M10 6v5M10 14h.01M17 10a7 7 0 11-14 0 7 7 0 0114 0z",
-      };
-    case "backfill":
-      return {
-        title: "Backfill in progress",
-        text: `${fmt(w?.filled ?? 0)} of ${fmt(w?.target ?? 10_000)} blocks indexed for the long window. Uptime (${fmt(w?.target ?? 10_000)}) is reported as a partial window rather than a percentage until the backfill completes.`,
-        fg: "var(--brand)",
-        bg: "var(--brandSoft)",
-        icon: "M10 5v5l3 2M17 10a7 7 0 11-14 0 7 7 0 0114 0z",
-      };
-    case "empty":
-      return {
-        title: "Awaiting RPC",
-        text: "No blocks indexed yet. The indexer is connecting to the configured RPC endpoint and will begin ingesting from chain head.",
-        fg: TX2,
-        bg: "var(--panel2)",
-        icon: "M10 5v5l3 2M17 10a7 7 0 11-14 0 7 7 0 0114 0z",
-      };
-    default:
-      return null;
-  }
 }
