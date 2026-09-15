@@ -681,7 +681,7 @@ function Row({
         }}
       >
         <span style={{ ...cell, fontSize: 11, color: TX3 }}>{v.rank}</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, overflow: "hidden" }}>
           <ValidatorAvatar address={v.address} avatarUrl={v.avatar_url} title={v.moniker ?? undefined} size={16} />
           {v.moniker && (
             <span
@@ -692,15 +692,28 @@ function Row({
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
+                // Shrink with the column instead of spilling the copy button
+                // into the uptime column beside it.
                 maxWidth: 118,
-                flex: "none",
+                flex: "0 1 auto",
+                minWidth: 0,
               }}
             >
               {v.moniker}
             </span>
           )}
           <span
-            style={{ ...cell, fontSize: 10.5, color: TX3, letterSpacing: "-.01em", whiteSpace: "nowrap" }}
+            style={{
+              ...cell,
+              fontSize: 10.5,
+              color: TX3,
+              letterSpacing: "-.01em",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              flex: "0 1 auto",
+              minWidth: 0,
+            }}
             title={v.address}
           >
             {short(v.address)}
