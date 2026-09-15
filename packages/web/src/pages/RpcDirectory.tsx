@@ -221,20 +221,20 @@ function EvmCard({
         <button
           type="button"
           disabled={!p.rpc_url}
-          className={copied === p.rpc_url ? "copy-glow" : undefined}
+          className={p.rpc_url !== null && copied === p.rpc_url ? "copy-glow" : undefined}
           onClick={() => p.rpc_url && onCopy(p.rpc_url)}
-          style={copyBtn(copied === p.rpc_url)}
+          style={copyBtn(p.rpc_url !== null && copied === p.rpc_url)}
         >
-          {copied === p.rpc_url ? "✓ RPC copied" : "RPC"}
+          {p.rpc_url !== null && copied === p.rpc_url ? "✓ RPC copied" : "RPC"}
         </button>
         <button
           type="button"
           disabled={!p.ws_url}
-          className={copied === p.ws_url ? "copy-glow" : undefined}
+          className={p.ws_url !== null && copied === p.ws_url ? "copy-glow" : undefined}
           onClick={() => p.ws_url && onCopy(p.ws_url)}
-          style={copyBtn(copied === p.ws_url)}
+          style={copyBtn(p.ws_url !== null && copied === p.ws_url)}
         >
-          {copied === p.ws_url ? "✓ WS copied" : "WS"}
+          {p.ws_url !== null && copied === p.ws_url ? "✓ WS copied" : "WS"}
         </button>
       </div>
     </div>
