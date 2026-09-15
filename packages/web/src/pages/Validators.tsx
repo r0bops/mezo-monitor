@@ -1,5 +1,5 @@
 /** Validators: overview cards, live network map, highlights, and full list. */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Dashboard } from "../useDashboard";
 import type { Slot, Validator, ValidatorStatus } from "../api";
 import { ValidatorDrop } from "../components/ValidatorDrop";
@@ -398,6 +398,21 @@ function ValidatorLowerPanels({ validators, onOpen }: { validators: Validator[];
 }
 
 function ValidatorInsightsModal({ validators, mode, onClose }: { validators: Validator[]; mode: "highlights" | "events"; onClose: () => void }) {
+  // Freeze the page behind the popup: while open, only the modal's own list
+  // scrolls. The previous body overflow is restored on close/unmount so the
+  // stylesheet's overflow-x:hidden on html/body is never clobbered.
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
   const sorted = mode === "highlights"
     ? [...validators].sort((a, b) => (b.voting_power ?? 0) - (a.voting_power ?? 0))
     : [...validators].sort((a, b) => (b.last_signed_height ?? 0) - (a.last_signed_height ?? 0));
