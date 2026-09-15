@@ -56,7 +56,11 @@ export function Validators({
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
+  const [insights, setInsights] = useState<"highlights" | "events" | null>(null);
   const [tip, setTip] = useState<{ i: number; x: number; y: number } | null>(null);
+  // Row whose detail drop is expanded — collapsed by default; only the row's
+  // chevron opens it (selecting a row alone just highlights table + map).
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const counts = useMemo(() => {
     const active = d.validators.filter((v) => v.status === "active").length;
@@ -250,7 +254,9 @@ export function Validators({
         <WorldMap validators={d.validators} maxSvgHeight={360} selected={selected} />
       </section>
 
-      <ValidatorLowerPanels validators={d.validators} />
+      <ValidatorLowerPanels validators={d.validators} onOpen={setInsights} />
+
+      {insights && <ValidatorInsightsModal validators={d.validators} mode={insights} onClose={() => setInsights(null)} />}
 
       {/* Full detail table remains below the dashboard fold for searching and
           inspecting every validator without competing with the map overview. */}
@@ -295,6 +301,8 @@ export function Validators({
               v={v}
               selected={v.address === selected}
               onSelect={onSelect}
+              open={expanded === v.address}
+              onToggle={() => setExpanded(expanded === v.address ? null : v.address)}
               longTarget={longTarget}
               onWatch={(watched) => d.patchValidator(v.address, { watched })}
               onLabel={(label) => d.patchValidator(v.address, { label })}
@@ -354,7 +362,7 @@ function SummaryIcon({ name, color }: { name: SummaryIconName; color: string }) 
   return <span className="validator-summary-icon" style={{ color, background: `color-mix(in srgb, ${color} 15%, transparent)` }}><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]} /></svg></span>;
 }
 
-function ValidatorLowerPanels({ validators }: { validators: Validator[] }) {
+function ValidatorLowerPanels({ validators, onOpen }: { validators: Validator[]; onOpen: (mode: "highlights" | "events") => void }) {
   const highlights = [...validators].sort((a, b) => (b.voting_power ?? 0) - (a.voting_power ?? 0)).slice(0, 4);
   const events = [...validators].sort((a, b) => (b.last_signed_height ?? 0) - (a.last_signed_height ?? 0)).slice(0, 4);
   return (
@@ -362,13 +370,12 @@ function ValidatorLowerPanels({ validators }: { validators: Validator[] }) {
       <section className="validators-lower-panel" style={panel}>
         <div className="validators-lower-head">
           <div className="validators-lower-title"><span style={{ color: BRAND, fontSize: 20 }}>☆</span><div>Validator Highlights<small>Top validators by voting power</small></div></div>
-          <a className="validators-lower-link" href="#/validators">View all&nbsp; →</a>
+          <button className="validators-lower-link" type="button" onClick={() => onOpen("highlights")}>View all&nbsp; →</button>
         </div>
         <div className="validator-highlight-header"><span>#</span><span>Validator</span><span>Status</span><span>Voting power</span><span>Uptime (24h)</span><span>Location</span></div>
         {highlights.map((v, i) => <div className="validator-highlight-row" key={v.address}>
           <span className="validator-highlight-rank">{i + 1}</span>
-          <ValidatorAvatar address={v.address} avatarUrl={v.avatar_url} size={23} />
-          <span className="validator-highlight-name">{v.moniker ?? short(v.address)}</span>
+          <span className="validator-highlight-identity"><ValidatorAvatar address={v.address} avatarUrl={v.avatar_url} size={23} /><span className="validator-highlight-name">{v.moniker ?? short(v.address)}</span></span>
           <StatusPill status={v.status} />
           <span className="validator-highlight-value">{v.voting_power === null ? "—" : `${v.voting_power.toFixed(2)}%`}</span>
           <span className="validator-highlight-value">{pct(v.uptime_1000)}</span>
@@ -378,7 +385,7 @@ function ValidatorLowerPanels({ validators }: { validators: Validator[] }) {
       <section className="validators-lower-panel" style={panel}>
         <div className="validators-lower-head">
           <div className="validators-lower-title"><span style={{ color: "#ad8cff", fontSize: 18 }}>◷</span><div>Recent Validator Events<small>Latest changes in validator set and status</small></div></div>
-          <a className="validators-lower-link" href="#/validators">View all&nbsp; →</a>
+          <button className="validators-lower-link" type="button" onClick={() => onOpen("events")}>View all&nbsp; →</button>
         </div>
         {events.map((v, i) => <div className="validator-event-row" key={v.address}>
           <span className={`validator-event-dot${v.status === "degraded" ? " warn" : ""}`} />
@@ -390,10 +397,41 @@ function ValidatorLowerPanels({ validators }: { validators: Validator[] }) {
   );
 }
 
+function ValidatorInsightsModal({ validators, mode, onClose }: { validators: Validator[]; mode: "highlights" | "events"; onClose: () => void }) {
+  const sorted = mode === "highlights"
+    ? [...validators].sort((a, b) => (b.voting_power ?? 0) - (a.voting_power ?? 0))
+    : [...validators].sort((a, b) => (b.last_signed_height ?? 0) - (a.last_signed_height ?? 0));
+  return (
+    <div className="validator-modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section className="validator-modal" role="dialog" aria-modal="true" aria-labelledby="validator-modal-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="validator-modal-head">
+          <div><h2 id="validator-modal-title">{mode === "highlights" ? "Validator Highlights" : "Recent Validator Events"}</h2><p>{mode === "highlights" ? "All validators ranked by voting power and uptime." : "Latest observed validator status and participation."}</p></div>
+          <button className="validator-modal-close" type="button" aria-label="Close" onClick={onClose}>×</button>
+        </div>
+        <div className="validator-modal-list">
+          {sorted.map((v, i) => mode === "highlights" ? (
+            <div className="validator-modal-row" key={v.address}>
+              <span className="validator-modal-rank">{i + 1}</span><ValidatorAvatar address={v.address} avatarUrl={v.avatar_url} size={28} />
+              <div className="validator-modal-main"><strong>{v.moniker ?? short(v.address)}</strong><small>{short(v.address)} · {v.location ? `${flag(v.location.country_code)} ${v.location.city ?? v.location.country ?? "unknown location"}` : "location unknown"}</small></div>
+              <StatusPill status={v.status} /><span className="validator-modal-number">{v.voting_power === null ? "—" : `${v.voting_power.toFixed(2)}%`}</span><span className="validator-modal-number">{pct(v.uptime_1000)}</span>
+            </div>
+          ) : (
+            <div className="validator-modal-row" key={v.address}>
+              <span className={`validator-event-dot${v.status === "degraded" ? " warn" : ""}`} /><div className="validator-modal-main"><strong>{v.status === "degraded" ? "Validator degraded" : "Validator online"}</strong><small>{v.moniker ?? short(v.address)} · last signed {fmt(v.last_signed_height)}</small></div><span className="validator-modal-number">{v.status}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function FullRow({
   v,
   selected,
   onSelect,
+  open,
+  onToggle,
   longTarget,
   onWatch,
   onLabel,
@@ -407,6 +445,9 @@ function FullRow({
   v: Validator;
   selected: boolean;
   onSelect: (a: string) => void;
+  /** Drop expanded? Collapsed by default — only the chevron opens it. */
+  open: boolean;
+  onToggle: () => void;
   longTarget: number;
   onWatch: (watched: boolean) => void;
   onLabel: (label: string | null) => void;
@@ -420,7 +461,6 @@ function FullRow({
   slots: Slot[];
 }) {
   const partial = v.slots_10000 < longTarget;
-  const open = selected;
   return (
     <div
       className="validators-row"
@@ -434,7 +474,6 @@ function FullRow({
     >
       <div
         onClick={() => onSelect(v.address)}
-        title="Click for signing history and detail"
         style={{
           display: "grid",
           gridTemplateColumns: COLS,
@@ -578,19 +617,43 @@ function FullRow({
       <span style={{ font: `400 11.5px/1 ${mono}`, color: TX3 }}>{fmt(v.last_signed_height)}</span>
       <span style={{ justifySelf: "end", display: "inline-flex", alignItems: "center", gap: 7 }}>
         <StatusPill status={v.status} size="md" />
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke={TX3}
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}
+        <button
+          type="button"
+          title={open ? "Collapse detail" : "Expand detail"}
+          aria-expanded={open}
+          onClick={(e) => {
+            e.stopPropagation();
+            // The drop reads the detail fetched for the selected validator.
+            onSelect(v.address);
+            onToggle();
+          }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 20,
+            height: 20,
+            border: "none",
+            background: "none",
+            padding: 0,
+            cursor: "pointer",
+            color: TX3,
+          }}
         >
-          <path d="M6 8l4 4 4-4" />
-        </svg>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}
+          >
+            <path d="M6 8l4 4 4-4" />
+          </svg>
+        </button>
       </span>
       </div>
       {open && (
