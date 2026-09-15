@@ -399,17 +399,27 @@ function ValidatorLowerPanels({ validators, onOpen }: { validators: Validator[];
 
 function ValidatorInsightsModal({ validators, mode, onClose }: { validators: Validator[]; mode: "highlights" | "events"; onClose: () => void }) {
   // Freeze the page behind the popup: while open, only the modal's own list
-  // scrolls. The previous body overflow is restored on close/unmount so the
-  // stylesheet's overflow-x:hidden on html/body is never clobbered.
+  // scrolls. Locking body alone is NOT enough — html's stylesheet overflow-x
+  // makes the root element the viewport scroller, so documentElement must be
+  // locked too. Both inline values are restored on close/unmount, and the
+  // vanishing scrollbar's width is compensated so the page doesn't reflow.
   useEffect(() => {
-    const previous = document.body.style.overflow;
+    const root = document.documentElement;
+    const scrollbar = window.innerWidth - root.clientWidth;
+    const prevRoot = root.style.overflow;
+    const prevBody = document.body.style.overflow;
+    const prevPad = document.body.style.paddingRight;
+    root.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
+    if (scrollbar > 0) document.body.style.paddingRight = `${scrollbar}px`;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = previous;
+      root.style.overflow = prevRoot;
+      document.body.style.overflow = prevBody;
+      document.body.style.paddingRight = prevPad;
       window.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
