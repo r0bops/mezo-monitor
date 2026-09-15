@@ -121,6 +121,9 @@ a:hover {
 }
 .side {
   width: 244px;
+  /* border-box is load-bearing: content-box width + the 17px side paddings
+     painted the fixed sidebar 35px past x=244, over the content's edge. */
+  box-sizing: border-box;
   flex: none;
   border-right: 1px solid var(--line);
   background: var(--panel);
