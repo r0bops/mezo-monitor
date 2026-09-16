@@ -115,29 +115,34 @@ export function WorldMap({
   const countries = new Set(placed.map((v) => v.location?.country).filter(Boolean)).size;
   const cities = new Set(placed.map((v) => v.location?.city).filter(Boolean)).size;
 
+  const unobserved = validators.length - placed.length;
+  const statusCounts = {
+    active: validators.filter((v) => v.status === "active").length,
+    degraded: validators.filter((v) => v.status === "degraded").length,
+    inactive: validators.filter((v) => v.status === "inactive").length,
+  };
+
   return (
     <div style={{ position: "relative" }}>
       <div
         style={{
           display: "flex",
-          alignItems: "baseline",
-          gap: 14,
-          padding: "10px 16px 0",
+          alignItems: "center",
+          gap: 12,
+          padding: "12px 16px 10px",
           flexWrap: "wrap",
         }}
       >
         <span className="world-map-info" aria-hidden="true">i</span>
-        <span style={{ font: `600 12px/1 ${sans}`, color: TX }}>Validator Network</span>
-        <span style={{ font: `400 11px/1 ${mono}`, color: TX3 }}>
+        <span style={{ font: `650 13px/1 ${sans}`, color: TX }}>Validator Network</span>
+        <span style={{ font: `400 11px/1 ${sans}`, color: TX3 }}>
           {validators.length} validators · {countries} countries · {cities} cities
-          {validators.length - placed.length > 0
-            ? ` · ${validators.length - placed.length} unobserved`
-            : ""}
+          {unobserved > 0 ? ` · ${unobserved} unobserved` : ""}
         </span>
-        <span style={{ marginLeft: "auto", display: "flex", gap: 12, font: `400 10px/1 ${sans}`, color: TX3 }}>
-          <span><Dot c={OK} /> active</span>
-          <span><Dot c={WARN} /> degraded</span>
-          <span><Dot c={BAD} /> inactive</span>
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 18, font: `500 11px/1 ${sans}` }}>
+          <Legend c={OK} label="Active" n={statusCounts.active} />
+          <Legend c={WARN} label="Degraded" n={statusCounts.degraded} />
+          <Legend c={BAD} label="Inactive" n={statusCounts.inactive} />
         </span>
       </div>
       <div className="world-map-canvas">
@@ -300,8 +305,23 @@ function Row3({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Dot({ c }: { c: string }) {
-  return <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 4, background: c, marginRight: 5 }} />;
+/** Legend entry with a live count — "Active (20)" in the reference header. */
+function Legend({ c, label, n }: { c: string; label: string; n: number }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          background: c,
+          boxShadow: `0 0 7px color-mix(in srgb, ${c} 60%, transparent)`,
+        }}
+      />
+      <span style={{ color: TX2 }}>{label}</span>
+      <span style={{ color: TX3, font: `400 10.5px/1 ${mono}` }}>({n})</span>
+    </span>
+  );
 }
 
 function shortAddr(a: string) {

@@ -299,7 +299,7 @@ a:hover {
 .map-light-ring { transform-box:fill-box; transform-origin:center; animation:mapLightPulse 2.1s ease-out both; }
 .map-selected-ring { transform-box:fill-box; transform-origin:center; animation:mapSelectedPulse 1.8s ease-in-out infinite; }
 @keyframes mapSelectedPulse { 0%,100% { opacity:.9; transform:scale(.92); } 50% { opacity:.3; transform:scale(1.2); } }
-.world-map-info { width:15px; height:15px; display:grid; place-items:center; border:1px solid var(--tx3); border-radius:50%; color:var(--tx2); font:700 10px/1 Inter,sans-serif; }
+.world-map-info { width:20px; height:20px; display:grid; place-items:center; border:1px solid var(--line2); border-radius:6px; background:color-mix(in srgb,#2f668e 22%,var(--panel2)); color:var(--tx2); font:700 10.5px/1 Inter,sans-serif; }
 .world-map-canvas { position:relative; height:clamp(220px, 26vw, 420px); overflow:hidden; border-top:1px solid var(--line); background:radial-gradient(ellipse at 50% 38%,rgba(44,93,132,.2),transparent 62%),linear-gradient(180deg,#10243a 0%,#0b1d31 58%,#081827 100%); }
 .world-map-canvas > svg { width:100% !important; height:100% !important; max-height:none !important; }
 .world-map-controls { position:absolute; left:12px; bottom:12px; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--line2); border-radius:8px; background:rgba(7,16,28,.78); box-shadow:0 8px 20px rgba(0,0,0,.22); }
