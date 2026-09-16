@@ -128,7 +128,11 @@ export function WorldMap({
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 12,
+          // space-between (not a pushed-right legend): when the panel is too
+          // narrow and the legend wraps, it left-aligns under the title
+          // instead of orphaning on the right.
+          justifyContent: "space-between",
+          gap: "8px 14px",
           padding: "12px 16px 10px",
           flexWrap: "wrap",
         }}
@@ -139,7 +143,7 @@ export function WorldMap({
           {validators.length} validators · {countries} countries · {cities} cities
           {unobserved > 0 ? ` · ${unobserved} unobserved` : ""}
         </span>
-        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 18, font: `500 11px/1 ${sans}` }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 14, font: `500 11px/1 ${sans}` }}>
           <Legend c={OK} label="Active" n={statusCounts.active} />
           <Legend c={WARN} label="Degraded" n={statusCounts.degraded} />
           <Legend c={BAD} label="Inactive" n={statusCounts.inactive} />
