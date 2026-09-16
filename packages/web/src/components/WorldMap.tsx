@@ -21,6 +21,16 @@ const H = 360;
 /** Same-origin proxy (the public site's CSP allows no third-party connect-src). */
 const GEOJSON_URL = "/api/v1/geo/land";
 
+/** Letter-spaced ocean names at fixed equirectangular spots, like the reference. */
+const OCEAN_LABELS: [string, number, number][] = [
+  ["ARCTIC OCEAN", 340, 30],
+  ["ATLANTIC OCEAN", 252, 150],
+  ["PACIFIC OCEAN", 80, 198],
+  ["PACIFIC OCEAN", 655, 190],
+  ["INDIAN OCEAN", 488, 227],
+  ["SOUTHERN OCEAN", 360, 288],
+];
+
 /** Fetched once per session; a failed fetch is permanent for the session. */
 let landPaths: string[] | null = null;
 
@@ -128,26 +138,22 @@ export function WorldMap({
         style={{
           display: "flex",
           alignItems: "center",
-          // space-between (not a pushed-right legend): when the panel is too
-          // narrow and the legend wraps, it left-aligns under the title
-          // instead of orphaning on the right.
-          justifyContent: "space-between",
-          gap: "8px 14px",
-          padding: "12px 16px 10px",
+          gap: 14,
+          padding: "14px 18px 12px",
           flexWrap: "wrap",
         }}
       >
         <span className="world-map-info" aria-hidden="true">i</span>
-        <span style={{ font: `650 13px/1 ${sans}`, color: TX }}>Validator Network</span>
-        <span style={{ font: `400 11px/1 ${sans}`, color: TX3 }}>
+        <span style={{ font: `700 16.5px/1 ${sans}`, color: TX, letterSpacing: ".2px" }}>Validator Network</span>
+        <span style={{ marginLeft: "auto", font: `400 11.5px/1 ${sans}`, color: TX3 }}>
           {validators.length} validators · {countries} countries · {cities} cities
           {unobserved > 0 ? ` · ${unobserved} unobserved` : ""}
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 14, font: `500 11px/1 ${sans}` }}>
-          <Legend c={OK} label="Active" n={statusCounts.active} />
-          <Legend c={WARN} label="Degraded" n={statusCounts.degraded} />
-          <Legend c={BAD} label="Inactive" n={statusCounts.inactive} />
-        </span>
+      </div>
+      <div className="world-map-legend">
+        <Legend c={OK} label="Active" n={statusCounts.active} />
+        <Legend c={WARN} label="Degraded" n={statusCounts.degraded} />
+        <Legend c={BAD} label="Inactive" n={statusCounts.inactive} />
       </div>
       <div className="world-map-canvas">
       <svg
@@ -201,6 +207,12 @@ export function WorldMap({
             <path d={d} fill="url(#world-map-land-texture)" fillOpacity={0.82} stroke="none" />
           </g>
         ))}
+        {/* ocean names sit on the water, under the markers */}
+        {OCEAN_LABELS.map(([name, x, y]) => (
+          <text key={`${name}${x}`} x={x} y={y} textAnchor="middle" className="world-map-ocean-label">
+            {name}
+          </text>
+        ))}
         {/* dots after land so they sit on top; later same-city dots offset by hash jitter */}
         {placed.map((v) => {
           const l = v.location!;
@@ -213,14 +225,14 @@ export function WorldMap({
           const picked = selected === v.address;
           return (
             <g key={v.address} transform={`translate(${x + j.dx} ${y + j.dy})`}>
-              <circle className="world-map-marker-glow" cx={0} cy={0} r={10} fill={picked ? "var(--brand)" : statusColorOf(v.status)} />
-              <circle className="world-map-marker-ring" cx={0} cy={0} r={6.5} fill="none" stroke={picked ? "var(--brand)" : statusColorOf(v.status)} strokeOpacity={picked ? ".9" : ".55"} strokeWidth={picked ? 1.2 : .8} />
-              {lit && <circle className="map-light-ring" cx={0} cy={0} r={6} fill="none" stroke={statusColorOf(v.status)} strokeWidth={1.5} />}
-              {picked && <circle className="map-selected-ring" cx={0} cy={0} r={10.5} fill="none" stroke="var(--brand)" strokeWidth={1.4} />}
+              <circle className="world-map-marker-glow" cx={0} cy={0} r={13} fill={picked ? "var(--brand)" : statusColorOf(v.status)} />
+              <circle className="world-map-marker-ring" cx={0} cy={0} r={7.5} fill="none" stroke={picked ? "var(--brand)" : statusColorOf(v.status)} strokeOpacity={picked ? ".9" : ".55"} strokeWidth={picked ? 1.3 : .9} />
+              {lit && <circle className="map-light-ring" cx={0} cy={0} r={7} fill="none" stroke={statusColorOf(v.status)} strokeWidth={1.6} />}
+              {picked && <circle className="map-selected-ring" cx={0} cy={0} r={12} fill="none" stroke="var(--brand)" strokeWidth={1.5} />}
               <circle
                 cx={0}
                 cy={0}
-                r={picked || lit || hovered ? 5.5 : 4}
+                r={picked || lit || hovered ? 6.5 : 4.8}
                 fill={picked ? "var(--brand)" : statusColorOf(v.status)}
                 fillOpacity={0.95}
                 stroke={picked ? "#fff" : "var(--panel2)"}
@@ -309,18 +321,19 @@ function Row3({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Legend entry with a live count — "Active (20)" in the reference header. */
+/** Legend pill — status-tinted border and background, live count inside. */
 function Legend({ c, label, n }: { c: string; label: string; n: number }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+    <span
+      className="world-map-legend-pill"
+      style={{
+        borderColor: `color-mix(in srgb, ${c} 42%, transparent)`,
+        background: `color-mix(in srgb, ${c} 10%, transparent)`,
+      }}
+    >
       <span
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: 4,
-          background: c,
-          boxShadow: `0 0 7px color-mix(in srgb, ${c} 60%, transparent)`,
-        }}
+        className="world-map-legend-dot"
+        style={{ background: c, boxShadow: `0 0 8px color-mix(in srgb, ${c} 70%, transparent)` }}
       />
       <span style={{ color: TX2 }}>{label}</span>
       <span style={{ color: TX3, font: `400 10.5px/1 ${mono}` }}>({n})</span>

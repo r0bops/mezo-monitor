@@ -299,16 +299,20 @@ a:hover {
 .map-light-ring { transform-box:fill-box; transform-origin:center; animation:mapLightPulse 2.1s ease-out both; }
 .map-selected-ring { transform-box:fill-box; transform-origin:center; animation:mapSelectedPulse 1.8s ease-in-out infinite; }
 @keyframes mapSelectedPulse { 0%,100% { opacity:.9; transform:scale(.92); } 50% { opacity:.3; transform:scale(1.2); } }
-.world-map-info { width:20px; height:20px; display:grid; place-items:center; border:1px solid var(--line2); border-radius:6px; background:color-mix(in srgb,#2f668e 22%,var(--panel2)); color:var(--tx2); font:700 10.5px/1 Inter,sans-serif; }
-.world-map-canvas { position:relative; height:clamp(220px, 26vw, 420px); overflow:hidden; border-top:1px solid var(--line); background:radial-gradient(ellipse at 50% 38%,rgba(44,93,132,.2),transparent 62%),linear-gradient(180deg,#10243a 0%,#0b1d31 58%,#081827 100%); }
+.world-map-info { width:26px; height:26px; display:grid; place-items:center; border:1px solid var(--line2); border-radius:8px; background:color-mix(in srgb,#2f668e 22%,var(--panel2)); color:var(--tx2); font:700 12px/1 Inter,sans-serif; }
+.world-map-legend { display:flex; align-items:center; gap:10px; padding:0 18px 12px; flex-wrap:wrap; }
+.world-map-legend-pill { display:inline-flex; align-items:center; gap:8px; padding:6px 13px; border:1px solid; border-radius:999px; font:500 11.5px/1 Inter,sans-serif; }
+.world-map-legend-dot { width:8px; height:8px; border-radius:4px; }
+.world-map-canvas { position:relative; height:clamp(220px, 26vw, 420px); margin:0 12px 12px; overflow:hidden; border:1px solid var(--line2); border-radius:14px; background:radial-gradient(ellipse at 50% 38%,rgba(44,93,132,.2),transparent 62%),linear-gradient(180deg,#10243a 0%,#0b1d31 58%,#081827 100%); }
 .world-map-canvas > svg { width:100% !important; height:100% !important; max-height:none !important; }
-.world-map-controls { position:absolute; left:12px; bottom:12px; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--line2); border-radius:8px; background:rgba(7,16,28,.78); box-shadow:0 8px 20px rgba(0,0,0,.22); }
-.world-map-controls button { width:34px; height:32px; display:grid; place-items:center; border:0; border-bottom:1px solid var(--line); background:transparent; color:var(--tx2); font:500 17px/1 Inter,sans-serif; cursor:pointer; }
-.world-map-controls button:last-child { border-bottom:0; font-size:14px; }
+.world-map-ocean-label { fill:#7f9fc4; opacity:.55; font:500 7.5px Inter,sans-serif; letter-spacing:.22em; pointer-events:none; }
+.world-map-controls { position:absolute; left:12px; bottom:12px; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--line2); border-radius:10px; background:rgba(7,16,28,.78); box-shadow:0 8px 20px rgba(0,0,0,.22); }
+.world-map-controls button { width:38px; height:36px; display:grid; place-items:center; border:0; border-bottom:1px solid var(--line); background:transparent; color:var(--tx2); font:500 18px/1 Inter,sans-serif; cursor:pointer; }
+.world-map-controls button:last-child { border-bottom:0; font-size:15px; }
 .world-map-controls button:hover { background:var(--panel2); color:var(--tx); }
-.world-map-distribution { position:absolute; right:12px; bottom:12px; display:inline-flex; align-items:center; gap:7px; padding:8px 11px; border:1px solid var(--line2); border-radius:8px; background:rgba(7,16,28,.78); color:var(--tx2); font:500 9px/1 Inter,sans-serif; }
-.world-map-distribution span { color:var(--tx3); font-size:13px; }
-.world-map-marker-glow { opacity:.2; filter:blur(4px); transform-box:fill-box; transform-origin:center; animation:worldMapMarkerGlow 2.8s ease-in-out infinite; }
+.world-map-distribution { position:absolute; right:12px; bottom:12px; display:inline-flex; align-items:center; gap:8px; padding:9px 13px; border:1px solid var(--line2); border-radius:10px; background:rgba(7,16,28,.78); color:var(--tx2); font:500 10.5px/1 Inter,sans-serif; }
+.world-map-distribution span { color:var(--tx3); font-size:14px; }
+.world-map-marker-glow { opacity:.3; filter:blur(5px); transform-box:fill-box; transform-origin:center; animation:worldMapMarkerGlow 2.8s ease-in-out infinite; }
 .world-map-marker-ring { opacity:.75; }
 @keyframes worldMapMarkerGlow { 0%,100% { opacity:.12; transform:scale(.86); } 50% { opacity:.26; transform:scale(1.12); } }
 @keyframes mapLightPulse {
