@@ -156,9 +156,12 @@ export function WorldMap({
         <Legend c={BAD} label="Inactive" n={statusCounts.inactive} />
       </div>
       <div className="world-map-canvas">
+      {/* Cover the canvas like the reference: the world fills the inset panel
+          and the overflow (poles, map edges) crops — no letterbox bands; the
+          oversized backdrops keep the fill seamless. */}
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="xMidYMid meet"
+        preserveAspectRatio="xMidYMid slice"
         style={{ width: "100%", height: "100%", display: "block", transform: `scale(${zoom})`, transformOrigin: "50% 50%", transition: "transform .2s ease", ...(maxSvgHeight !== undefined ? { maxHeight: maxSvgHeight } : {}) }}
         role="img"
         aria-label="validator node locations world map"
