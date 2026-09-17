@@ -133,6 +133,13 @@ function viewValidator(
   const uptime1 = v.slots_short > 0 ? (v.signed_short / v.slots_short) * 100 : null;
   const uptime10 = v.slots_long > 0 ? (v.signed_long / v.slots_long) * 100 : null;
   const degraded = v.missed_streak >= 3 || (uptime1 !== null && uptime1 < 99.5);
+  // A set member that has never signed, or gone silent for longer than the
+  // long window, is offline no matter what the PoA set says. Without this
+  // rule it fell through to "active" whenever no uptime window had data
+  // (arashaus: in the set since 11,052,053, zero observed signatures).
+  const silent =
+    v.last_signed_height === null ||
+    (v.last_seen_height !== null && v.last_seen_height - v.last_signed_height > LONG_WINDOW);
   return {
     address: v.address,
     moniker: v.moniker,
@@ -153,7 +160,7 @@ function viewValidator(
     missed_streak: v.missed_streak,
     proposer_share_1000:
       proposedTotalCount > 0 ? (v.proposed_short / proposedTotalCount) * 100 : null,
-    status: !v.is_active ? "inactive" : degraded ? "degraded" : "active",
+    status: !v.is_active || silent ? "inactive" : degraded ? "degraded" : "active",
     location: v.loc_ip
       ? {
           ip: v.loc_ip,

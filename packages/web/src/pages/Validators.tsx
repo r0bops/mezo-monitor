@@ -38,7 +38,7 @@ import { WorldMap } from "../components/WorldMap";
 // wide screens. The same template is used by the header and every row.
 const COLS = "36px 28px minmax(270px, 1.75fr) minmax(128px, 1fr) minmax(128px, 1fr) minmax(78px, .65fr) minmax(142px, 1fr) minmax(132px, 1fr) minmax(94px, .75fr)";
 
-type Filter = "all" | "active" | "degraded" | "watched";
+type Filter = "all" | "active" | "degraded" | "inactive" | "watched";
 
 export function Validators({
   d,
@@ -63,10 +63,14 @@ export function Validators({
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const counts = useMemo(() => {
-    const active = d.validators.filter((v) => v.status === "active").length;
-    const degraded = d.validators.filter((v) => v.status !== "active").length;
-    const watched = d.validators.filter((v) => v.watched).length;
-    return { all: d.validators.length, active, degraded, watched };
+    const by = (s: string) => d.validators.filter((v) => v.status === s).length;
+    return {
+      all: d.validators.length,
+      active: by("active"),
+      degraded: by("degraded"),
+      inactive: by("inactive"),
+      watched: d.validators.filter((v) => v.watched).length,
+    };
   }, [d.validators]);
 
   const rows = useMemo(() => {
@@ -81,7 +85,8 @@ export function Validators({
       )
         return false;
       if (filter === "all") return true;
-      if (filter === "degraded") return v.status !== "active";
+      if (filter === "degraded") return v.status === "degraded";
+      if (filter === "inactive") return v.status === "inactive";
       if (filter === "watched") return v.watched;
       return v.status === "active";
     });
@@ -130,6 +135,7 @@ export function Validators({
     { id: "watched", label: `Watched ${counts.watched}` },
     { id: "active", label: `Active ${counts.active}` },
     { id: "degraded", label: `Degraded ${counts.degraded}` },
+    { id: "inactive", label: `Inactive ${counts.inactive}` },
   ];
 
   return (
@@ -647,7 +653,19 @@ function FullRow({
       </div>
       <span style={{ font: `400 11.5px/1 ${mono}`, color: TX3 }}>{fmt(v.last_signed_height)}</span>
       <span style={{ justifySelf: "end", display: "inline-flex", alignItems: "center", gap: 7 }}>
-        <StatusPill status={v.status} size="md" />
+        <span
+          title={
+            v.status === "inactive"
+              ? v.is_active
+                ? "Still on the validator set but not signing — the node looks offline"
+                : "Not signing and no longer on the validator set"
+              : v.status === "degraded"
+                ? "On the validator set, missing blocks"
+                : "On the validator set, signing normally"
+          }
+        >
+          <StatusPill status={v.status} size="md" />
+        </span>
         <button
           type="button"
           title={open ? "Collapse detail" : "Expand detail"}
