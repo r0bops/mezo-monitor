@@ -68,14 +68,15 @@ export function Settings({
     : [];
 
   return (
-    <div className="g2" style={{ alignItems: "start", maxWidth: 1000 }}>
+    <div className="settings-page g2" style={{ alignItems: "start", maxWidth: 1000 }}>
       <section style={{ ...panel, overflow: "hidden" }}>
         <Head title="Chain configuration" aside="chains/*.yaml" mono />
         {chainRows.length === 0 && <Loading />}
         {chainRows.map(([k, v]) => (
-          <div key={k} style={rowStyle}>
-            <span style={{ font: `500 11.5px/1 ${mono}`, color: TX3 }}>{k}</span>
+          <div className="settings-row" key={k} style={rowStyle}>
+            <span className="settings-key" style={{ font: `500 11.5px/1 ${mono}`, color: TX3 }}>{k}</span>
             <span
+              className="settings-value"
               style={{
                 font: `500 11.5px/1 ${mono}`,
                 color: TX,
@@ -221,9 +222,9 @@ export function Settings({
           <Head title="Indexer" />
           {indexerRows.length === 0 && <Loading />}
           {indexerRows.map(([k, v]) => (
-            <div key={k} style={rowStyle}>
-              <span style={{ font: `500 11.5px/1 ${mono}`, color: TX3 }}>{k}</span>
-              <span style={{ font: `500 11.5px/1 ${mono}`, color: TX }}>{v}</span>
+            <div className="settings-row" key={k} style={rowStyle}>
+            <span className="settings-key" style={{ font: `500 11.5px/1 ${mono}`, color: TX3 }}>{k}</span>
+            <span className="settings-value" style={{ font: `500 11.5px/1 ${mono}`, color: TX }}>{v}</span>
             </div>
           ))}
         </section>

@@ -64,13 +64,13 @@ export function RpcDirectory({ d }: { d: Dashboard }) {
   const discovered = (rows ?? []).filter((r) => r.source === "discovered");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 980 }}>
+    <div className="rpc-directory-page" style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 980 }}>
       <section style={{ ...panel, overflow: "hidden" }}>
         <Head
           title="EVM endpoints"
           aside={`${evm?.length ?? 0} providers · Mezo's official list · probed server-side`}
         />
-        <div style={gridStyle}>
+        <div className="rpc-directory-grid" style={gridStyle}>
           {(evm ?? []).map((p) => (
             <EvmCard key={p.label} p={p} copied={copied} onCopy={copy} />
           ))}
@@ -88,7 +88,7 @@ export function RpcDirectory({ d }: { d: Dashboard }) {
           title="Verified endpoints"
           aside={`${configured.length} · the rotation this monitor runs on`}
         />
-        <div style={gridStyle}>
+        <div className="rpc-directory-grid" style={gridStyle}>
           {configured.map((e) => (
             <Card key={e.url} e={e} copied={copied === e.url} onCopy={() => copy(e.url)} />
           ))}
@@ -101,7 +101,7 @@ export function RpcDirectory({ d }: { d: Dashboard }) {
           title="Community endpoints"
           aside={`${discovered.filter((x) => x.healthy).length} discovered on the P2P network`}
         />
-        <div style={gridStyle}>
+        <div className="rpc-directory-grid" style={gridStyle}>
           {discovered.map((e) => (
             <Card key={e.url} e={e} copied={copied === e.url} onCopy={() => copy(e.url)} />
           ))}

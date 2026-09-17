@@ -57,7 +57,7 @@ export function EndpointSwitcher({ d }: { d: Dashboard }) {
   const dot = active ? (active.healthy ? OK : BAD) : TX3;
 
   return (
-    <div ref={ref} style={{ position: "relative", flex: "none" }}>
+    <div ref={ref} className="endpoint-switcher" style={{ position: "relative", flex: "none" }}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

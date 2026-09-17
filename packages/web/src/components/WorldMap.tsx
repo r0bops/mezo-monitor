@@ -70,7 +70,8 @@ export function WorldMap({
 }: {
   validators: Validator[];
   /** Clamp the map so the whole Overview fold fits short viewports; the
-   *  viewBox letterboxes inside the smaller box instead of clipping. */
+   *  geographic layer is measured against the smaller box while its ocean
+   *  backdrop remains full-bleed. */
   maxSvgHeight?: number;
   /** Consensus address of the validator selected in the table, if any —
    *  its marker is highlighted in the brand colour. */
@@ -156,13 +157,13 @@ export function WorldMap({
         <Legend c={BAD} label="Inactive" n={statusCounts.inactive} />
       </div>
       <div className="world-map-canvas">
-      {/* Cover the canvas like the reference: the world fills the inset panel
-          and the overflow (poles, map edges) crops — no letterbox bands; the
-          oversized backdrops keep the fill seamless. */}
+      {/* Keep the SVG itself at the measured canvas size. The base ocean and
+          texture stay full-bleed while only the geographic layer scales, so
+          zooming out never exposes transparent gutters around the map. */}
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="xMidYMid slice"
-        style={{ width: "100%", height: "100%", display: "block", transform: `scale(${zoom})`, transformOrigin: "50% 50%", transition: "transform .2s ease", ...(maxSvgHeight !== undefined ? { maxHeight: maxSvgHeight } : {}) }}
+        style={{ width: "100%", height: "100%", display: "block", ...(maxSvgHeight !== undefined ? { maxHeight: maxSvgHeight } : {}) }}
         role="img"
         aria-label="validator node locations world map"
       >
@@ -187,13 +188,15 @@ export function WorldMap({
             <circle cx="15" cy="14" r=".5" fill="#91abc4" fillOpacity=".16" />
           </pattern>
         </defs>
-        {/* The letterbox-friendly backdrop: with preserveAspectRatio="meet"
-            the panel can be wider/taller than the world box, so the ocean,
-            halo and dot texture extend well past the viewBox and the bands
-            around the world stay seamless. */}
+        {/* Full-bleed backdrop. It is deliberately outside the zoom group so
+            the ocean, halo and dot texture always cover the measured canvas. */}
         <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="url(#world-map-ocean)" />
         <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="url(#world-map-halo)" />
         <rect x={-W} y={-H} width={W * 3} height={H * 3} fill="url(#world-map-dots)" opacity=".62" />
+        <g
+          transform={`translate(${W / 2} ${H / 2}) scale(${zoom}) translate(${-W / 2} ${-H / 2})`}
+          style={{ transition: "transform .2s ease" }}
+        >
         {/* graticule: always drawn, the landmasses sit on top when available */}
         {Array.from({ length: 11 }, (_, i) => (
           <line key={`h${i}`} x1={-W} x2={W * 2} y1={(i * H) / 12 + H / 24} y2={(i * H) / 12 + H / 24} stroke="#2a4866" strokeOpacity=".5" strokeWidth={0.42} />
@@ -257,6 +260,7 @@ export function WorldMap({
             </g>
           );
         })}
+        </g>
       </svg>
       <div className="world-map-controls" aria-label="Map controls">
         <button type="button" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(1.45, +(value + .12).toFixed(2)))}>+</button>

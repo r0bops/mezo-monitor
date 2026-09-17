@@ -73,8 +73,8 @@ export function Metrics({
   const maxShare = Math.max(0.01, ...dist.map((p) => p.share ?? 0));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+    <div className="metrics-page" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="metrics-toolbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
         <span style={{ font: `400 11px/1 ${sans}`, color: TX3 }}>
           a 24h window empties after any long outage — wider horizons keep history visible
         </span>

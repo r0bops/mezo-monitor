@@ -25,4 +25,16 @@ describe("rpcUrl", () => {
       "http://127.0.0.1:26657/net_info",
     );
   });
+
+  it("routes the bundled public preset through the same-origin bridge", () => {
+    expect(rpcUrl("https://rpc.lavenderfive.com:443/mezo", "/health")).toBe(
+      "/api/v1/rpc/proxy?endpoint=https%3A%2F%2Frpc.lavenderfive.com%3A443%2Fmezo&path=%2Fhealth",
+    );
+  });
+
+  it("preserves quoted CometBFT params through the preset bridge", () => {
+    expect(rpcUrl("https://mezo.rpc.nodeshub.online", "/block", { height: '"latest"' })).toBe(
+      "/api/v1/rpc/proxy?endpoint=https%3A%2F%2Fmezo.rpc.nodeshub.online&path=%2Fblock&height=%22latest%22",
+    );
+  });
 });

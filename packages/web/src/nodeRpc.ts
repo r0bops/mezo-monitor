@@ -23,13 +23,28 @@ export type RpcResult<T> =
   | { state: "ok"; latencyMs: number; data: T }
   | { state: "blocked" | "error"; latencyMs: number; error: string };
 
+/** The bundled presets are fetched through the monitor because those public
+ * nodes are reachable server-side but do not permit browser CORS. Custom URLs
+ * intentionally stay browser-direct so the API cannot be used as an open
+ * proxy to arbitrary hosts. */
+const SAME_ORIGIN_RPC_PRESETS = new Set([
+  "https://rpc.lavenderfive.com:443/mezo",
+  "https://mezo.rpc.nodeshub.online",
+]);
+
 /** Build a CometBFT RPC URL: strip trailing slashes, append path + params. */
 export function rpcUrl(
   base: string,
   path: string,
   params?: Record<string, string | number>,
 ): string {
-  let url = base.replace(/\/+$/, "") + path;
+  const normalized = base.replace(/\/+$/, "");
+  if (SAME_ORIGIN_RPC_PRESETS.has(normalized.toLowerCase())) {
+    const query = new URLSearchParams({ endpoint: normalized, path });
+    for (const [key, value] of Object.entries(params ?? {})) query.set(key, String(value));
+    return `/api/v1/rpc/proxy?${query.toString()}`;
+  }
+  let url = normalized + path;
   if (params) {
     const qs = Object.entries(params)
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
@@ -59,9 +74,12 @@ async function rpcGet<T>(
     error,
   });
   try {
-    const r = await fetch(rpcUrl(base, path, params), {
+    const url = rpcUrl(base, path, params);
+    const r = await fetch(url, {
       headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(8_000),
+      // The same-origin bridge may make one bounded fallback attempt when a
+      // public community node is rate-limited or unavailable.
+      signal: AbortSignal.timeout(url.startsWith("/api/v1/rpc/proxy?") ? 12_000 : 8_000),
     });
     if (!r.ok) return fail("error", `HTTP ${r.status}`);
     const j: any = await r.json();

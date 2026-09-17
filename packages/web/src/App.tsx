@@ -90,6 +90,8 @@ export default function App() {
   const [win, setWin] = useState(500);
   const [metricsHours, setMetricsHours] = useState(24);
   const [copied, setCopied] = useState<string | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   /** True when the deployed bundle differs from the one this tab runs. */
   const [stale, setStale] = useState(false);
 
@@ -133,6 +135,30 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Keep the off-canvas navigation modal on touch devices: the document must
+  // not continue moving underneath it, and Escape should always be a quick
+  // way back to the page.
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileNavOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [mobileNavOpen]);
+
+  useEffect(() => {
+    // A route change from a deep link or browser back should never leave the
+    // drawer covering the newly selected page.
+    setMobileNavOpen(false);
+    setMobileSearchOpen(false);
+  }, [page]);
+
   const go = useCallback((id: PageId) => {
     window.location.hash = `/${id}`;
     setPage(id);
@@ -158,7 +184,8 @@ export default function App() {
       }}
     >
       <div className="shell">
-        <Sidebar page={page} go={go} d={d} />
+        <Sidebar page={page} go={go} d={d} mobileOpen={mobileNavOpen} onNavigate={() => setMobileNavOpen(false)} />
+        {mobileNavOpen && <button className="mobile-nav-scrim" type="button" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} />}
 
         <main className="main-content" style={{ flex: 1, minWidth: 0, padding: "0 28px 12px", display: "flex", flexDirection: "column" }}>
           <header
@@ -171,8 +198,12 @@ export default function App() {
               padding: "20px 0 18px",
             }}
           >
+            <div className="mobile-header-brand" aria-label="Mezo Monitor by Pathrock Network">
+              <img src="/mezo-icon.png" alt="" aria-hidden="true" />
+              <div><strong>Mezo</strong><span>MONITOR</span><small>by Pathrock Network</small></div>
+            </div>
             <form
-              className="global-search"
+              className={`global-search${mobileSearchOpen ? " mobile-search-open" : ""}`}
               onSubmit={(e) => {
                 e.preventDefault();
                 const q = search.trim().toLowerCase();
@@ -191,7 +222,13 @@ export default function App() {
               <kbd>⌘ K</kbd>
             </form>
             <PriceTicker />
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
+            <div className="global-actions" style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
+              <button className="mobile-search-toggle" type="button" aria-label="Search the network" aria-expanded={mobileSearchOpen} onClick={() => setMobileSearchOpen((open) => !open)}>
+                <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>
+              </button>
+              <button className="mobile-nav-toggle" type="button" aria-label="Open navigation" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen((open) => !open)}>
+                <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M3 5h14M3 10h14M3 15h14" /></svg>
+              </button>
               <EndpointSwitcher d={d} />
               <button
                 type="button"
@@ -278,11 +315,21 @@ export default function App() {
 
           <div className={page === "validators" ? "page-heading validators-global-heading" : "page-heading"}>
             <div>
+              {page === "rpc" && <div className="direct-rpc-breadcrumb"><span>Home</span><b>›</b><strong>Direct RPC</strong></div>}
               <h1>{TITLES[page]}</h1>
               <span className="page-subtitle">{SUBTITLES[page]}</span>
             </div>
             <span className="slogan">Decentralized today. Brighter tomorrow.</span>
           </div>
+
+          {page === "overview" && (
+            <div className="mobile-overview-status">
+              <button type="button" className={live ? "mobile-live-pill active" : "mobile-live-pill"} onClick={() => setLive((value) => !value)}>
+                <i />{live ? "Live" : "Paused"}
+              </button>
+              <PriceTicker />
+            </div>
+          )}
 
           {page === "overview" && (
             <Overview
@@ -310,6 +357,7 @@ export default function App() {
           visitor has to report wrong data. mailto keeps it zero-infrastructure;
           swap for a tailnet-only form if the address ever draws spam. */}
       <a
+        className="feedback-button"
         href="mailto:nwrobj@gmail.com?subject=mezo-monitor%20feedback&body=(what%20looks%20wrong%2C%20on%20which%20page)%3A%20"
         title="Report wrong data or suggest something"
         style={{
@@ -430,21 +478,27 @@ function Sidebar({
   page,
   go,
   d,
+  mobileOpen,
+  onNavigate,
 }: {
   page: PageId;
   go: (p: PageId) => void;
   d: ReturnType<typeof useDashboard>;
+  mobileOpen: boolean;
+  onNavigate: () => void;
 }) {
   return (
     <aside
-      className="side"
+      className={`side${mobileOpen ? " mobile-open" : ""}`}
       onWheel={(e) => {
-        // The navigation is a viewport-anchored rail, never a scroll
-        // container. Stop wheel momentum over its empty space from bubbling
-        // into the document and making the rail appear to drift.
-        e.preventDefault();
+        // The desktop rail is a viewport layer, never a scroll container.
+        // The mobile drawer is allowed to scroll when a short viewport cannot
+        // fit the full navigation and sponsor card.
+        if (!mobileOpen) e.preventDefault();
       }}
-      onTouchMove={(e) => e.preventDefault()}
+      onTouchMove={(e) => {
+        if (!mobileOpen) e.preventDefault();
+      }}
     >
       <div className="brand-lockup">
         <img className="mezo-wave" src="/mezo-icon.png" alt="" aria-hidden="true" />
@@ -465,6 +519,7 @@ function Sidebar({
             onClick={(e) => {
               e.preventDefault();
               go(n.id);
+              onNavigate();
             }}
             style={{
               display: "flex",
@@ -487,10 +542,16 @@ function Sidebar({
           return item;
         })}
       </nav>
-      <div className="pathrock-card">
+      <a
+        className="pathrock-card"
+        href="https://pathrocknetwork.org/"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Visit Pathrock Network"
+      >
         <img className="pathrock-orbit" src="/pathrock-mark.svg" alt="" aria-hidden="true" />
         <div><strong>PATHROCK<br />NETWORK</strong><small>Open infrastructure for a more decentralized tomorrow.</small></div>
-      </div>
+      </a>
     </aside>
   );
 }

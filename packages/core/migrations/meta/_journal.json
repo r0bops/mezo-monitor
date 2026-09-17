@@ -85,6 +85,13 @@
       "when": 1789234241287,
       "tag": "0011_majestic_sinister_six",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789424624828,
+      "tag": "0012_military_nextwave",
+      "breakpoints": true
     }
   ]
 }

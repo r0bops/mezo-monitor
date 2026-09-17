@@ -137,7 +137,7 @@ export function Overview({
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="overview-page" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {loading ? (
         <div className="g5 tiles-sticky">
           {[0, 1, 2, 3, 4].map((i) => (
@@ -257,7 +257,7 @@ function HeightTile({
 }) {
   const max = Math.max(1, ...spark);
   return (
-    <div style={tile}>
+    <div className="overview-stat-tile" style={tile}>
       <MetricHeading icon="block" label="Latest Indexed Height" />
       <span style={{ ...bigValue, color: dash ? TX3 : TX }}>{dash ? "—" : fmt(height)}</span>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 10 }}>
@@ -284,7 +284,7 @@ function HeightTile({
 
 function BlockTimeTile({ dash, ms, spark }: { dash: boolean; ms: number | null; spark: number[] }) {
   return (
-    <div style={tile}>
+    <div className="overview-stat-tile" style={tile}>
       <MetricHeading icon="clock" label="Avg Block Time" />
       <span style={{ ...bigValue, color: dash ? TX3 : TX }}>
         {dash || ms === null ? "—" : secs(ms / 1000)}
@@ -331,7 +331,7 @@ function SigningTile({ dash, net }: { dash: boolean; net: Dashboard["net"] }) {
         );
   const signedNow = net?.recent_signing.at(-1);
   return (
-    <div style={tile}>
+    <div className="overview-stat-tile" style={tile}>
       <MetricHeading icon="signing" label="Signing Rate" />
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span style={{ ...bigValue, color: dash ? TX3 : degraded ? WARN : TX }}>
@@ -381,7 +381,7 @@ function ValidatorsTile({ dash, d }: { dash: boolean; d: Dashboard }) {
       )
     : new Array(20).fill("var(--line)");
   return (
-    <div style={tile}>
+    <div className="overview-stat-tile" style={tile}>
       <MetricHeading icon="validators" label="Active Validators" />
       <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
         <span style={{ ...bigValue, color: dash ? TX3 : TX }}>
@@ -417,6 +417,7 @@ function LagTile({ dash, d }: { dash: boolean; d: Dashboard }) {
   const icon = dash || unknown || warn ? "M10 6v5M10 14h.01" : "M4 10.5l4 4 8-9";
   return (
     <div
+      className="overview-stat-tile overview-lag-tile"
       style={{
         ...tile,
         border: `1px solid ${warn ? "var(--warn)" : "var(--line)"}`,
@@ -817,7 +818,7 @@ function NetworkHealth({ d, dash }: { d: Dashboard; dash: boolean }) {
       ];
 
   return (
-    <section style={{ ...panel, padding: "15px 16px 16px", display: "flex", flexDirection: "column", gap: 13 }}>
+    <section className="overview-health-card" style={{ ...panel, padding: "15px 16px 16px", display: "flex", flexDirection: "column", gap: 13 }}>
       <MetricHeading icon="health" label="Network Health" />
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", flex: "none", background: verdict.color }} />
@@ -874,7 +875,7 @@ function MiniChart({
   formatValue: (v: number) => string;
 }) {
   return (
-    <section style={{ ...panel, padding: "15px 16px 12px", display: "flex", flexDirection: "column", gap: 11 }}>
+    <section className="overview-mini-chart" style={{ ...panel, padding: "15px 16px 12px", display: "flex", flexDirection: "column", gap: 11 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
         <div className="analytics-heading">
           <MetricGlyph icon={title === "Block Time" ? "clock" : "signing"} />
@@ -886,7 +887,7 @@ function MiniChart({
         <span style={{ font: `600 20px/1 ${mono}`, color: dash ? TX3 : TX }}>{dash ? "—" : now}</span>
         <span style={{ font: `500 10.5px/1 ${sans}`, color: TX3 }}>current</span>
       </div>
-      <div style={{ position: "relative", flex: 1, minHeight: 144 }}>
+      <div className="overview-mini-chart-plot" style={{ position: "relative", flex: 1, minHeight: 144 }}>
         {!dash ? (
           <TimeSeriesChart
             values={series}
@@ -924,7 +925,7 @@ function MiniChart({
 function SetChanges({ d }: { d: Dashboard }) {
   const events = (d.set?.changes ?? []).slice(0, 5);
   return (
-    <section style={{ ...panel, padding: "15px 16px 14px", display: "flex", flexDirection: "column", gap: 11 }}>
+    <section className="overview-set-changes" style={{ ...panel, padding: "15px 16px 14px", display: "flex", flexDirection: "column", gap: 11 }}>
       <div className="analytics-heading">
         <MetricGlyph icon="changes" />
         <h3 style={{ margin: 0, font: `600 12.5px/1 ${sans}`, color: TX }}>Recent Validator Set Changes</h3>

@@ -236,6 +236,22 @@ export type PipelineBlock = {
 };
 export const getPipeline = () =>
   get<{ blocks: PipelineBlock[] }>("/api/v1/consensus/pipeline");
+export const getBlocks = (limit: number = 25) =>
+  get<{ blocks: PipelineBlock[] }>(`/api/v1/blocks?limit=${limit}`);
+export type Transaction = {
+  hash: string | null;
+  method: string | null;
+  from: string | null;
+  from_name: string | null;
+  to: string | null;
+  to_name: string | null;
+  timestamp: string | null;
+  status: string | null;
+  amount: string | null;
+  block: number | null;
+};
+export const getTransactions = (limit: number = 25) =>
+  get<{ transactions: Transaction[] }>(`/api/v1/transactions?limit=${limit}`);
 export const getValidators = () => get<ValidatorList>("/api/v1/validators");
 export const getValidatorSet = () => get<ValidatorSet>("/api/v1/validator-set");
 export const getMetrics = (hours: number = 24) => get<Metrics>(`/api/v1/metrics?hours=${hours}`);
@@ -272,4 +288,3 @@ export async function updateValidatorIdentity(
 
 export const getSeries = (minutes: number, buckets: number) =>
   get<Series>(`/api/v1/series?minutes=${minutes}&buckets=${buckets}`);
-

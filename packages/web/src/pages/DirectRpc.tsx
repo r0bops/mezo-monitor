@@ -36,6 +36,46 @@ const REFRESH_MS = 10_000;
 const BLOCK_COUNT = 10;
 const STORAGE_KEY = "mezo-rpc-url";
 
+/** Public CometBFT endpoints that can be selected without exposing the
+ * monitor's private/archive node URLs. These are intentionally kept here as
+ * browser-facing presets: the endpoint directory redacts configured URLs for
+ * public clients, which previously left the picker with only “Add Endpoint”. */
+const PUBLIC_ENDPOINTS = [
+  {
+    key: "lavender-five",
+    label: "Lavender.Five",
+    url: "https://rpc.lavenderfive.com:443/mezo",
+    detail: "Public Mezo RPC",
+  },
+  {
+    key: "nodeshub",
+    label: "NodesHub",
+    url: "https://mezo.rpc.nodeshub.online",
+    detail: "Public failover RPC",
+  },
+] as const;
+
+function normalizeRpcUrl(value: string) {
+  return value.trim().replace(/\/+$/, "").toLowerCase();
+}
+
+type RpcIconName = "link" | "block" | "code" | "response" | "status" | "network" | "validators" | "cube" | "health" | "search";
+
+function RpcIcon({ name, className = "" }: { name: RpcIconName; className?: string }) {
+  return <img className={`rpc-icon-image ${className}`} src={`/icons/rpc-${name}.png`} alt="" aria-hidden="true" />;
+}
+
+function methodIcon(path: string): RpcIconName {
+  if (path === "/health") return "health";
+  if (path === "/net_info") return "network";
+  if (path === "/block" || path === "/block_results" || path === "/blockchain") return "block";
+  if (path === "/validators") return "validators";
+  if (path === "/tx" || path === "/tx_search") return "search";
+  if (path.includes("consensus")) return "cube";
+  if (path === "/status") return "status";
+  return "code";
+}
+
 /* ── RPC console ───────────────────────────────────────────────────────────
    polkadot.js-style: pick a call, fill the parameters, execute. Read-only by
    design — broadcast/send endpoints are deliberately not in the catalog. */
@@ -143,6 +183,10 @@ function encodeParam(kind: ParamKind, value: string): string {
 const CONSOLE_METHOD_KEY = "mezo-rpc-console-method";
 
 function RpcConsole({ base }: { base: string }) {
+  return <RpcConsoleReference base={base} />;
+
+  // Legacy console implementation is retained below for compatibility with
+  // persisted method state; the reference layout above is the active view.
   const [path, setPath] = useState<string>(() => {
     try {
       return localStorage.getItem(CONSOLE_METHOD_KEY) ?? "/status";
@@ -204,7 +248,7 @@ function RpcConsole({ base }: { base: string }) {
   let pretty = "";
   let truncated = false;
   if (result?.state === "ok") {
-    pretty = JSON.stringify(result.body, null, 2) ?? "null";
+    pretty = JSON.stringify(result!.body, null, 2) ?? "null";
     if (pretty.length > 200_000) {
       pretty = pretty.slice(0, 200_000);
       truncated = true;
@@ -313,14 +357,14 @@ function RpcConsole({ base }: { base: string }) {
             <span
               style={{
                 ...chip,
-                background: result.state === "ok" ? "var(--okSoft)" : "var(--badSoft)",
-                color: result.state === "ok" ? OK : BAD,
+                background: result!.state === "ok" ? "var(--okSoft)" : "var(--badSoft)",
+                color: result!.state === "ok" ? OK : BAD,
               }}
             >
-              {result.state === "ok" ? "200" : result.state === "blocked" ? "blocked" : "error"} ·{" "}
-              {result.latencyMs}ms
+              {result!.state === "ok" ? "200" : result!.state === "blocked" ? "blocked" : "error"} ·{" "}
+              {result!.latencyMs}ms
             </span>
-            {result.state === "ok" && (
+            {result!.state === "ok" && (
               <button
                 type="button"
                 onClick={() => {
@@ -378,9 +422,9 @@ function RpcConsole({ base }: { base: string }) {
         ) : result ? (
           <div style={{ ...banner, border: "1px solid var(--line)", background: "var(--badSoft)" }}>
             <span style={{ font: `600 12px/1.3 ${sans}`, color: BAD }}>
-              {result.state === "blocked" ? "Browser blocked the request" : "Node answered with an error"}
+              {result!.state === "blocked" ? "Browser blocked the request" : "Node answered with an error"}
             </span>
-            <span style={{ font: `400 11px/1.5 ${sans}`, color: TX2 }}>{result.error}</span>
+            <span style={{ font: `400 11px/1.5 ${sans}`, color: TX2 }}>{result!.error}</span>
           </div>
         ) : (
           <span style={{ font: `400 11px/1.5 ${sans}`, color: TX3 }}>
@@ -394,9 +438,87 @@ function RpcConsole({ base }: { base: string }) {
   );
 }
 
+function RpcConsoleReference({ base }: { base: string }) {
+  const [path, setPath] = useState(() => {
+    try { return localStorage.getItem(CONSOLE_METHOD_KEY) ?? "/health"; } catch { return "/health"; }
+  });
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [result, setResult] = useState<{ state: "ok" | "error" | "blocked"; latencyMs: number; body?: unknown; error?: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [presetSaved, setPresetSaved] = useState(false);
+  const [category, setCategory] = useState("Popular");
+  const spec = METHODS.find((method) => method.path === path) ?? METHODS[0];
+  const categories = ["Popular", "Blockchain", "Transactions", "Accounts", "Validators", "Mempool", "Network", "Debug", "Custom"];
+  const popular = ["/status", "/health", "/net_info", "/block", "/validators", "/tx_search", "/consensus_state"];
+  const groups: Record<string, string[]> = { Blockchain: ["Node", "Blocks"], Transactions: ["Transactions"], Accounts: ["Node"], Validators: ["Validators"], Mempool: ["Mempool"], Network: ["Node"], Debug: ["Consensus", "Raw ABCI"] };
+  const visible = category === "Popular"
+    ? popular.map((item) => METHODS.find((method) => method.path === item)).filter((method): method is MethodSpec => Boolean(method))
+    : METHODS.filter((method) => category === "Custom" ? true : groups[category]?.includes(method.group));
+  const descriptions: Record<string, string> = {
+    "/status": "Get node status and sync info",
+    "/health": "Get node health status",
+    "/net_info": "Get network information",
+    "/block": "Get block details",
+    "/validators": "Get validator set information",
+    "/tx_search": "Search for transactions",
+    "/consensus_state": "Get consensus state",
+  };
+
+  useEffect(() => {
+    try { localStorage.setItem(CONSOLE_METHOD_KEY, path); } catch { /* storage unavailable */ }
+  }, [path]);
+
+  const execute = async () => {
+    setBusy(true);
+    const params: Record<string, string> = {};
+    for (const param of spec.params) {
+      const value = (values[param.key] ?? "").trim();
+      if (value) params[param.key] = encodeParam(param.kind, value);
+    }
+    const response = await rpcCallRaw(base, spec.path, params);
+    setResult(response.state === "ok" ? { state: "ok", latencyMs: response.latencyMs, body: response.data } : { state: response.state, latencyMs: response.latencyMs, error: response.error });
+    setBusy(false);
+  };
+
+  const pretty = result?.state === "ok" ? JSON.stringify(result.body, null, 2) ?? "null" : "";
+  const choose = (next: string) => { setPath(next); setValues({}); setResult(null); };
+  const clear = () => { setValues({}); setResult(null); };
+  const copyResponse = () => {
+    if (!pretty) return;
+    void navigator.clipboard?.writeText(pretty);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1400);
+  };
+  return (
+    <div className="rpc-console-area">
+      <section className="rpc-method-explorer">
+        <div className="rpc-method-heading"><span className="rpc-panel-icon"><RpcIcon name="block" /></span><div><h2>Method Explorer</h2><p>Browse and execute RPC methods. Select a method to view its parameters and response.</p></div><a href="#/api">View API Docs ↗</a></div>
+        <div className="rpc-category-tabs">{categories.map((item) => <button key={item} type="button" className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
+        <div className="rpc-method-grid">
+          {visible.slice(0, category === "Popular" ? 7 : 12).map((method) => <button type="button" key={method.path} className={`rpc-method-card ${method.path === spec.path ? "selected" : ""}`} onClick={() => choose(method.path)}><span className="rpc-method-icon"><RpcIcon name={methodIcon(method.path)} /></span><span><strong>{method.path.replace(/^\//, "")}</strong><small>{descriptions[method.path] ?? (method.params.length ? "Configure request parameters" : "Get node response")}</small></span></button>)}
+          <button type="button" className="rpc-method-card view-all" onClick={() => setCategory("Custom")}><span className="rpc-method-icon"><RpcIcon name="response" /></span><span><strong>View all methods</strong><small>Browse complete list →</small></span></button>
+        </div>
+      </section>
+      <div className="rpc-workbench">
+        <section className="rpc-parameters-panel">
+          <div className="rpc-workbench-heading"><span className="rpc-panel-icon"><RpcIcon name="code" /></span><div><h2>Parameters</h2><p>Configure method parameters.</p></div><span className="rpc-raw-toggle">Raw JSON <i /></span></div>
+          <div className="rpc-parameter-fields">{spec.params.length === 0 ? <div className="rpc-no-params"><span>ⓘ</span><div><strong>This method does not require any parameters.</strong><small>Click Execute to run the method with an empty request.</small></div></div> : spec.params.map((param) => <label key={param.key}><span>{param.label}</span><input value={values[param.key] ?? ""} placeholder={param.placeholder} spellCheck={false} onChange={(event) => setValues((current) => ({ ...current, [param.key]: event.target.value }))} onKeyDown={(event) => event.key === "Enter" && !busy && void execute()} /></label>)}</div>
+          <span className="rpc-parameter-hint">{spec.note ?? spec.params.find((param) => param.hint)?.hint ?? `Selected method: ${spec.path}`}</span>
+          <div className="rpc-parameter-actions"><div><button type="button" className="rpc-execute-button" onClick={() => void execute()} disabled={busy}>▷ {busy ? "Executing…" : "Execute"}<kbd>⌘↵</kbd></button><button type="button" className="rpc-clear-button" onClick={clear}>↻ Clear</button></div><button type="button" className="rpc-save-preset" onClick={() => { try { localStorage.setItem(CONSOLE_METHOD_KEY, path); } catch { /* storage unavailable */ } setPresetSaved(true); window.setTimeout(() => setPresetSaved(false), 1400); }}>▱ {presetSaved ? "Saved" : "Save as Preset"}</button></div>
+        </section>
+        <section className={`rpc-response-panel${expanded ? " expanded" : ""}`}>
+          <div className="rpc-workbench-heading"><span className="rpc-panel-icon"><RpcIcon name="response" /></span><div><h2>Response</h2><p>RPC response from the node.</p></div><div className="rpc-response-toolbar">{result && <span className={`rpc-response-status ${result.state === "ok" ? "ok" : "error"}`}><i />{result.state === "ok" ? "200 OK" : result.state}</span>}{result && <small>◷ {result.latencyMs}ms</small>}<button type="button" onClick={copyResponse} disabled={!pretty}>{copied ? "✓ Copied" : "▣ Copy"}</button><button type="button" aria-label={expanded ? "Close expanded response" : "Expand response"} onClick={() => setExpanded((value) => !value)}>{expanded ? "×" : "⛶"}</button></div></div>
+          <div className="rpc-response-code" role="region" aria-label="RPC JSON response" tabIndex={0}>{result?.state === "ok" ? <pre>{pretty}</pre> : result ? <span className="rpc-response-error">{result.error}</span> : <span className="rpc-response-empty">Execute a method to inspect the node response.</span>}<span className="rpc-response-format">JSON⌄</span></div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 type PanelState = {
   probe: NodeProbe | null;
-  validators: RpcResult<ValidatorsPage> | null;
   blocks: RpcResult<BlockInfo[]> | null;
   netInfo: RpcResult<NetInfo> | null;
   loading: boolean;
@@ -405,7 +527,6 @@ type PanelState = {
 
 const EMPTY: PanelState = {
   probe: null,
-  validators: null,
   blocks: null,
   netInfo: null,
   loading: false,
@@ -413,22 +534,15 @@ const EMPTY: PanelState = {
 };
 
 export function DirectRpc({ d }: { d: Dashboard }) {
-  /** Consensus address → operator name, from the monitor's validator list. */
-  const names = new Map<string, string>();
-  for (const v of d.validators) {
-    const name = v.label ?? v.moniker;
-    if (name) names.set(v.address, name);
-  }
-
   const endpoints = d.endpoints?.endpoints ?? [];
   const suggested = endpoints
     .map((e) => e.rpc_url)
     .filter((u): u is string => Boolean(u));
   const [url, setUrl] = useState<string>(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) ?? suggested[0] ?? "";
+      return localStorage.getItem(STORAGE_KEY) ?? PUBLIC_ENDPOINTS[0].url;
     } catch {
-      return suggested[0] ?? "";
+      return PUBLIC_ENDPOINTS[0].url;
     }
   });
   /** Name of the configured endpoint matching the entered URL, if any. Must
@@ -437,7 +551,7 @@ export function DirectRpc({ d }: { d: Dashboard }) {
   const matched =
     endpoints.find((e) => e.rpc_url && e.rpc_url.replace(/\/+$/, "") === url.replace(/\/+$/, "")) ??
     null;
-  const [live, setLive] = useState(true);
+  const [live] = useState(true);
   const [tick, setTick] = useState(0);
   const [state, setState] = useState<PanelState>(EMPTY);
   const urlRef = useRef(url);
@@ -453,7 +567,10 @@ export function DirectRpc({ d }: { d: Dashboard }) {
 
   const refresh = useCallback(async () => {
     const base = urlRef.current;
-    if (!base) return;
+    if (!base) {
+      setState(EMPTY);
+      return;
+    }
     setState((s) => ({ ...s, loading: true }));
     const probe = await probeNode(base);
     if (probe.state !== "ok") {
@@ -465,8 +582,7 @@ export function DirectRpc({ d }: { d: Dashboard }) {
     const heights = Number.isFinite(head)
       ? Array.from({ length: BLOCK_COUNT }, (_, i) => head - i).filter((h) => h > 0)
       : [];
-    const [validators, netInfo, ...blockResults] = await Promise.all([
-      fetchValidators(base, "latest", 1),
+    const [netInfo, ...blockResults] = await Promise.all([
       fetchNetInfo(base),
       ...heights.map((h) => fetchBlock(base, h)),
     ]);
@@ -475,7 +591,6 @@ export function DirectRpc({ d }: { d: Dashboard }) {
       : blockResults.find((b) => b.state !== "ok")!;
     setState({
       probe,
-      validators,
       netInfo,
       blocks,
       loading: false,
@@ -497,60 +612,15 @@ export function DirectRpc({ d }: { d: Dashboard }) {
   const blocked = probe !== null && probe.state !== "ok";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 1100 }}>
-      <section style={controlBar}>
-        <input
-          list="mezo-rpc-suggestions"
-          value={url}
-          placeholder="https://rpc-mezo.your-node.example"
-          onChange={(e) => setUrl(e.target.value)}
-          spellCheck={false}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            padding: "8px 10px",
-            borderRadius: 8,
-            border: "1px solid var(--line)",
-            background: "var(--panel2)",
-            font: `400 11.5px/1 ${mono}`,
-            color: TX,
-          }}
-        />
-        <datalist id="mezo-rpc-suggestions">
-          {suggested.map((u) => (
-            <option key={u} value={u} />
-          ))}
-        </datalist>
-        <span
-          title={matched?.rpc_url ?? ""}
-          style={{
-            ...chip,
-            background: matched ? "var(--brandSoft)" : "var(--panel2)",
-            color: matched ? "var(--brand)" : TX3,
-          }}
-        >
-          {matched ? matched.label : "custom node"}
-        </span>
-        <button type="button" onClick={() => void refresh()} disabled={state.loading} style={btn}>
-          {state.loading ? "…" : "Probe"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setLive((l) => !l)}
-          style={{
-            ...btn,
-            background: live ? "var(--okSoft)" : "var(--panel)",
-            color: live ? OK : TX2,
-          }}
-        >
-          {live ? "Live" : "Paused"}
-        </button>
-        <span style={{ font: `400 10.5px/1 ${mono}`, color: TX3, whiteSpace: "nowrap" }}>
-          {probe
-            ? `${probe.latencyMs}ms · updated ${state.lastUpdated ? agoFrom(state.lastUpdated.toISOString()) : "—"} ago`
-            : "not probed yet"}
-        </span>
-      </section>
+    <div className="direct-rpc-page" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <RpcEndpointPanel
+        url={url}
+        setUrl={setUrl}
+        suggested={[...PUBLIC_ENDPOINTS.map((endpoint) => endpoint.url), ...suggested]}
+        probe={probe}
+        loading={state.loading}
+        onConnect={() => void refresh()}
+      />
 
       {blocked && probe && (
         <div style={{ ...banner, border: "1px solid var(--line)", background: "var(--badSoft)" }}>
@@ -565,32 +635,103 @@ export function DirectRpc({ d }: { d: Dashboard }) {
       )}
 
       <RpcConsole base={url} />
-
-      <div className="g2" style={{ alignItems: "start" }}>
-        <KeyValue
-          title="Node status"
-          aside="/status"
-          rows={
-            probe?.state === "ok"
-              ? ([
-                  ...(matched ? [["endpoint", matched.label] as [string, string]] : []),
-                  ["network", probe.network ?? "—"],
-                  ["moniker", probe.moniker ?? "—"],
-                  ["version", probe.version ? `v${probe.version}` : "—"],
-                  ["latest", fmt(Number(probe.latest))],
-                  ["earliest", fmt(Number(probe.earliest))],
-                  ["sync", probe.catchingUp ? "catching up" : "in sync"],
-                ] as [string, string][])
-              : null
-          }
-          pill={probe?.state === "ok" ? (probe.catchingUp ? "degraded" : "active") : null}
-        />
-        <NetInfoCard r={state.netInfo} />
-      </div>
-
-      <ValidatorsCard base={url} r={state.validators} names={names} />
-      <BlocksCard r={state.blocks} names={names} />
+      <RpcSummaryGrid probe={probe} netInfo={state.netInfo} blocks={state.blocks} endpoint={matched?.label ?? url} />
     </div>
+  );
+}
+
+function RpcSummaryGrid({
+  probe,
+  netInfo,
+  blocks,
+  endpoint,
+}: {
+  probe: NodeProbe | null;
+  netInfo: RpcResult<NetInfo> | null;
+  blocks: RpcResult<BlockInfo[]> | null;
+  endpoint: string;
+}) {
+  const network = netInfo?.state === "ok" ? netInfo.data : null;
+  const recent = blocks?.state === "ok" ? blocks.data.slice(0, 5) : [];
+  const synced = probe?.state === "ok" && !probe.catchingUp;
+  return (
+    <div className="rpc-summary-grid">
+      <section className="rpc-summary-card">
+        <div className="rpc-summary-head"><span className="rpc-summary-icon"><RpcIcon name="status" /></span><h2>Node Status</h2>{probe?.state === "ok" && <span className={`rpc-summary-state ${synced ? "ok" : "warn"}`}><i />{synced ? "Synced" : "Catching up"}</span>}</div>
+        <div className="rpc-summary-body">
+          <SummaryRow label="Network" value={probe?.state === "ok" ? probe.network ?? "—" : "—"} />
+          <SummaryRow label="Latest Block" value={probe?.state === "ok" ? fmt(Number(probe.latest)) : "—"} />
+          <SummaryRow label="Sync Status" value={probe?.state === "ok" ? (synced ? "100.00%" : "Syncing") : "—"} />
+          <SummaryRow label="Node Version" value={probe?.state === "ok" ? probe.version ?? "—" : "—"} />
+          <SummaryRow label="Moniker" value={probe?.state === "ok" ? probe.moniker ?? "—" : "—"} />
+        </div>
+      </section>
+      <section className="rpc-summary-card">
+        <div className="rpc-summary-head"><span className="rpc-summary-icon"><RpcIcon name="network" /></span><h2>Network Info</h2></div>
+        <div className="rpc-summary-body">
+          <SummaryRow label="Chain ID" value={probe?.state === "ok" ? probe.network ?? "—" : "—"} />
+          <SummaryRow label="Peers" value={network ? fmt(network.nPeers) : "—"} />
+          <SummaryRow label="Listening" value={network ? (network.listening ? "Yes" : "No") : "—"} />
+          <SummaryRow label="RPC Endpoint" value={endpoint || "—"} title={endpoint} />
+          <SummaryRow label="Earliest Block" value={probe?.state === "ok" ? fmt(Number(probe.earliest)) : "—"} />
+        </div>
+      </section>
+      <section className="rpc-summary-card rpc-latest-blocks-card">
+        <div className="rpc-summary-head"><span className="rpc-summary-icon"><RpcIcon name="block" /></span><h2>Latest Blocks</h2><a href="#/blocks">View all →</a></div>
+        <div className="rpc-latest-block-list">
+          {recent.length > 0 ? recent.map((block) => (
+            <a key={block.height} href="#/blocks" className="rpc-latest-block-row">
+              <span aria-hidden="true"><RpcIcon name="block" className="rpc-row-icon" /></span><strong>{fmt(Number(block.height))}</strong><small>{block.time ? `${agoFrom(block.time)} ago` : "—"}</small><em>{fmt(block.txCount)} txs</em>
+            </a>
+          )) : <span className="rpc-summary-empty">Waiting for a successful probe…</span>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value, title }: { label: string; value: string; title?: string }) {
+  return <div className="rpc-summary-row"><span>{label}</span><strong title={title}>{value}</strong></div>;
+}
+
+function RpcEndpointPanel({
+  url,
+  setUrl,
+  suggested,
+  probe,
+  loading,
+  onConnect,
+}: {
+  url: string;
+  setUrl: (value: string) => void;
+  suggested: string[];
+  probe: NodeProbe | null;
+  loading: boolean;
+  onConnect: () => void;
+}) {
+  const cards = [
+    { ...PUBLIC_ENDPOINTS[0], label: "Mainnet", badge: "Recommended" },
+    { ...PUBLIC_ENDPOINTS[1], label: "Public RPC", badge: "Public" },
+  ];
+  return (
+    <section className="rpc-endpoint-panel">
+      <div className="rpc-panel-heading"><span className="rpc-panel-icon"><RpcIcon name="link" /></span><div><h2>RPC Endpoint</h2><p>Enter a Mezo RPC endpoint or choose a quick connection below.</p></div></div>
+      <div className="rpc-endpoint-connect-row">
+        <div className="rpc-endpoint-input-wrap"><RpcIcon name="link" className="rpc-input-icon" /><input list="mezo-rpc-suggestions" value={url} placeholder="https://rpc.mezo.your-node.example" onChange={(e) => setUrl(e.target.value)} spellCheck={false} /><button type="button" aria-label="Clear endpoint" onClick={() => setUrl("")}>×</button></div>
+        <datalist id="mezo-rpc-suggestions">{suggested.map((u) => <option key={u} value={u} />)}</datalist>
+        <span className={`rpc-connected-pill ${probe?.state === "ok" ? "connected" : ""}`}><i />{probe?.state === "ok" ? "Connected" : "Not connected"}<b>⌄</b></span>
+        <span className="rpc-latency-pill"><i>▥</i><strong>{probe ? `${probe.latencyMs} ms` : "—"}</strong><small>Latency</small></span>
+        <button type="button" className="rpc-connect-button" onClick={onConnect} disabled={loading}><RpcIcon name="link" />{loading ? "Connecting…" : "Connect"}</button>
+      </div>
+      <span className="rpc-quick-label">Quick endpoints</span>
+      <div className="rpc-endpoint-cards">
+        {cards.map((endpoint, index) => {
+          const selected = normalizeRpcUrl(endpoint.url) === normalizeRpcUrl(url);
+          return <button type="button" key={endpoint.key} className={`rpc-endpoint-card ${selected ? "selected" : ""}`} onClick={() => setUrl(endpoint.url)}><span className={`rpc-endpoint-card-icon icon-${index}`}>{index === 0 ? <img className="rpc-mezo-mark" src="/mezo-icon.png" alt="" aria-hidden="true" /> : <RpcIcon name="block" />}</span><span><strong>{endpoint.label}</strong><small>{endpoint.url}</small></span><em>{endpoint.badge}</em><b className="rpc-endpoint-radio">{selected ? "●" : "○"}</b></button>;
+        })}
+        <button type="button" className="rpc-endpoint-card add" onClick={() => setUrl("")}><span className="rpc-endpoint-card-icon">＋</span><span><strong>Add Custom Endpoint</strong><small>Save and connect to a custom RPC</small></span><b className="rpc-endpoint-radio">○</b></button>
+      </div>
+    </section>
   );
 }
 
@@ -816,16 +957,12 @@ function Empty({ text }: { text: string }) {
   );
 }
 
-const controlBar: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "12px 14px",
-  borderRadius: 12,
-  border: "1px solid var(--line)",
-  background: "var(--panel)",
-  boxShadow: "var(--shadow)",
-};
+/* Retained as non-rendered drill-down building blocks; the production page
+ * now uses the compact three-card summary above instead of duplicating these
+ * full tables in the main flow. */
+void NetInfoCard;
+void ValidatorsCard;
+void BlocksCard;
 
 const banner: React.CSSProperties = {
   display: "flex",

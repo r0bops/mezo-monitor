@@ -38,6 +38,35 @@ const STALL_LAG_BLOCKS = 50;
 /** Just under block cadence: a cached read is at most one block stale. */
 const DERIVED_TTL_MS = 3_000;
 
+/** Browser-safe bridge for the two public presets shown by Direct RPC.
+ * Exact matching is intentional: accepting arbitrary URLs here would turn the
+ * dashboard into an SSRF/open-proxy surface. Custom endpoints remain direct
+ * browser connections and therefore still require their own CORS headers. */
+const DIRECT_RPC_ENDPOINTS = new Map([
+  ["https://rpc.lavenderfive.com:443/mezo", "https://rpc.lavenderfive.com:443/mezo"],
+  ["https://mezo.rpc.nodeshub.online", "https://mezo.rpc.nodeshub.online"],
+]);
+const DIRECT_RPC_PATHS = new Set([
+  "/status",
+  "/health",
+  "/net_info",
+  "/genesis",
+  "/abci_info",
+  "/block",
+  "/block_results",
+  "/commit",
+  "/blockchain",
+  "/validators",
+  "/unconfirmed_txs",
+  "/num_unconfirmed_txs",
+  "/tx",
+  "/tx_search",
+  "/consensus_state",
+  "/dump_consensus_state",
+  "/abci_query",
+]);
+const DIRECT_RPC_MAX_BYTES = 8 * 1024 * 1024;
+
 export type Deps = {
   pool: pg.Pool;
   /**
@@ -247,6 +276,81 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
     }
   });
 
+  app.get<{
+    Querystring: { endpoint?: string; path?: string; [key: string]: string | undefined };
+  }>("/api/v1/rpc/proxy", async (req, reply) => {
+    const requestedEndpoint = (req.query.endpoint ?? "").replace(/\/+$/, "").toLowerCase();
+    const upstreamBase = DIRECT_RPC_ENDPOINTS.get(requestedEndpoint);
+    if (!upstreamBase) {
+      reply.code(403);
+      return { error: "endpoint is not an allowlisted Direct RPC preset" };
+    }
+    const rpcPath = req.query.path ?? "";
+    if (!DIRECT_RPC_PATHS.has(rpcPath)) {
+      reply.code(400);
+      return { error: "unsupported Direct RPC method" };
+    }
+    const forwardedParams: Array<[string, string]> = [];
+    let forwarded = 0;
+    for (const [key, value] of Object.entries(req.query)) {
+      if (key === "endpoint" || key === "path" || value === undefined) continue;
+      if (++forwarded > 12 || key.length > 64 || value.length > 4096) {
+        reply.code(400);
+        return { error: "invalid Direct RPC parameters" };
+      }
+      forwardedParams.push([key, value]);
+    }
+
+    /* Public community nodes can rate-limit or briefly go offline. Keep the
+     * selected provider as the first choice, then retry through the node the
+     * indexer is currently following. The fallback never comes from request
+     * input and its URL is never returned to the browser. */
+    const fallbackBase = deps.chain()?.rpc_url?.replace(/\/+$/, "");
+    const upstreamBases = [upstreamBase, fallbackBase]
+      .filter((base): base is string => Boolean(base))
+      .filter(
+        (base, index, all) =>
+          all.findIndex((candidate) => candidate.toLowerCase() === base.toLowerCase()) === index,
+      );
+
+    for (const [candidateIndex, base] of upstreamBases.entries()) {
+      const upstream = new URL(base.replace(/\/+$/, "") + rpcPath);
+      for (const [key, value] of forwardedParams) upstream.searchParams.set(key, value);
+      try {
+        const res = await fetch(upstream, {
+          headers: { accept: "application/json" },
+          signal: AbortSignal.timeout(4_500),
+        });
+        if (!res.ok) {
+          req.log.warn(
+            { rpcPath, candidateIndex, status: res.status },
+            "Direct RPC candidate returned an error",
+          );
+          continue;
+        }
+        const declared = Number(res.headers.get("content-length") ?? 0);
+        if (declared > DIRECT_RPC_MAX_BYTES) {
+          req.log.warn({ rpcPath, candidateIndex }, "Direct RPC candidate response too large");
+          continue;
+        }
+        const bytes = Buffer.from(await res.arrayBuffer());
+        if (bytes.byteLength > DIRECT_RPC_MAX_BYTES) {
+          req.log.warn({ rpcPath, candidateIndex }, "Direct RPC candidate response too large");
+          continue;
+        }
+        return JSON.parse(bytes.toString("utf8")) as unknown;
+      } catch (error) {
+        req.log.warn(
+          { err: error, rpcPath, candidateIndex },
+          "Direct RPC candidate request failed",
+        );
+      }
+    }
+
+    reply.code(502);
+    return { error: "all Direct RPC providers are temporarily unavailable" };
+  });
+
   // Shared across the validator, validator-set and metrics routes so one
   // refresh cycle costs a single scan rather than five.
   const metricsCache = new CacheMap(
@@ -314,6 +418,33 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
 
   app.get("/health", async () => ({ status: "ok", uptime: process.uptime() }));
 
+  /** Same-origin market snapshot for the header ticker. Keeping this proxy
+   * server-side avoids browser CORS/rate-limit failures from CoinGecko and
+   * coalesces all visitors into one request per minute. */
+  const mezoPrice = new Cached(async () => {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=mezo&vs_currencies=usd&include_24hr_change=true",
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(8_000) },
+    );
+    if (!res.ok) throw new Error(`market upstream HTTP ${res.status}`);
+    const json = (await res.json()) as { mezo?: { usd?: unknown; usd_24h_change?: unknown } };
+    const usd = json.mezo?.usd;
+    const usd24hChange = json.mezo?.usd_24h_change;
+    if (typeof usd !== "number" || !Number.isFinite(usd) || typeof usd24hChange !== "number" || !Number.isFinite(usd24hChange)) {
+      throw new Error("market upstream returned an invalid MEZO payload");
+    }
+    return { usd, usd_24h_change: usd24hChange };
+  }, 60_000);
+  app.get("/api/v1/market/mezo", async (_req, reply) => {
+    try {
+      return await mezoPrice.get();
+    } catch (e) {
+      app.log.warn({ err: e }, "MEZO market data unavailable");
+      reply.code(503);
+      return { error: "market data unavailable" };
+    }
+  });
+
   /**
    * The consensus pipeline strip: the newest blocks with proposer identity
    * (logo via the shared avatar resolver), votes, tx count and consensus
@@ -344,6 +475,78 @@ export function registerRoutes(app: FastifyInstance, deps: Deps): void {
         round: rows[i].round,
       })),
     };
+  });
+
+  /** Recent indexed blocks for the dedicated Blocks view. Unlike the compact
+   * pipeline strip this returns newest first and keeps the consensus fields
+   * visible for inspection. */
+  app.get<{ Querystring: { limit?: string } }>("/api/v1/blocks", async (req, reply) => {
+    const chain = requireChain(reply);
+    if (!chain) return;
+    const requested = Number(req.query.limit ?? 25);
+    const limit = Number.isFinite(requested) ? Math.max(1, Math.min(100, Math.floor(requested))) : 25;
+    const rows = await pipelineBlocks(pool, chain.id, limit);
+    const withLogos = await withAvatars(
+      rows.map((b) => ({ ...b, address: b.proposer_address ?? "" })),
+      resolveAvatar,
+    );
+    return {
+      blocks: withLogos.reverse().map((b) => ({
+        height: b.height,
+        time: b.time.toISOString(),
+        proposer: b.proposer_address
+          ? { address: b.proposer_address, moniker: b.moniker, avatar_url: b.avatar_url }
+          : null,
+        tx_count: b.tx_count,
+        votes: { signed: b.signature_count, total: b.validator_count },
+        round: b.round,
+      })),
+    };
+  });
+
+  /** Blockscout-backed EVM transaction list. Mezo Monitor deliberately does
+   * not index transaction payloads itself; this same-origin proxy keeps the
+   * page styled and safe while preserving the explorer as the source of truth. */
+  app.get<{ Querystring: { limit?: string } }>("/api/v1/transactions", async (req, reply) => {
+    const chain = requireChain(reply);
+    if (!chain) return;
+    if (!chain.blockscout_url) {
+      reply.code(503);
+      return { error: "transaction explorer unavailable" };
+    }
+    const requested = Number(req.query.limit ?? 25);
+    const limit = Number.isFinite(requested) ? Math.max(1, Math.min(50, Math.floor(requested))) : 25;
+    const origin = new URL(chain.blockscout_url);
+    const apiHost = origin.hostname.startsWith("api.") ? origin.hostname : `api.${origin.hostname}`;
+    const endpoint = `${origin.protocol}//${apiHost}/api/v2/transactions?filter=validated&page=1&offset=${limit}`;
+    try {
+      const res = await fetch(endpoint, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) throw new Error(`transaction explorer HTTP ${res.status}`);
+      const body = (await res.json()) as { items?: Array<Record<string, unknown>> };
+      const text = (v: unknown) => (typeof v === "string" ? v : null);
+      const address = (v: unknown) => (v && typeof v === "object" && "hash" in v ? text((v as { hash?: unknown }).hash) : null);
+      return {
+        // Some Blockscout deployments ignore `offset` as a page-size hint and
+        // always return their default 50-item page. Enforce our public limit
+        // here so the monitor stays bounded and the count matches the table.
+        transactions: (body.items ?? []).slice(0, limit).map((t) => ({
+          hash: text(t.hash),
+          method: text(t.method) ?? (Array.isArray(t.tx_types) ? text(t.tx_types[0]) : null),
+          from: address(t.from),
+          from_name: t.from && typeof t.from === "object" && "name" in t.from ? text((t.from as { name?: unknown }).name) : null,
+          to: address(t.to),
+          to_name: t.to && typeof t.to === "object" && "name" in t.to ? text((t.to as { name?: unknown }).name) : null,
+          timestamp: text(t.timestamp),
+          status: text(t.status) ?? text(t.result),
+          amount: text(t.value),
+          block: typeof t.block_number === "number" ? t.block_number : null,
+        })),
+      };
+    } catch (e) {
+      app.log.warn({ err: e }, "transaction explorer unavailable");
+      reply.code(503);
+      return { error: "transaction explorer unavailable" };
+    }
   });
 
   /**

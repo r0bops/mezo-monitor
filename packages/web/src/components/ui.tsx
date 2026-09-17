@@ -379,7 +379,7 @@ export function TimeSeriesChart({
   max: number;
   stroke: string;
   fillColor: string;
-  height?: number;
+  height?: number | "fill";
   formatValue: (v: number) => string;
   formatTime: (t: string) => string;
   compact?: boolean;
@@ -409,13 +409,12 @@ export function TimeSeriesChart({
   return (
     <div
       ref={ref}
-      style={{ position: "relative", height, touchAction: "none" }}
+      style={{ position: "relative", height: height === "fill" ? "100%" : height, touchAction: "none" }}
       onPointerMove={onMove}
       onPointerLeave={() => setHover(null)}
     >
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
-        {!compact &&
-          [0, 0.25, 0.5, 0.75, 1].map((g) => (
+        {(compact ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]).map((g) => (
             <line key={g} x1="0" y1={g * 100} x2="100" y2={g * 100} stroke="var(--grid)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
           ))}
         {areaP && <path d={areaP} fill={fillColor} />}

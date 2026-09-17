@@ -132,8 +132,9 @@ export function ApiDocs({ d }: { d: Dashboard }) {
   }, [load]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 900 }}>
+    <div className="api-docs-page" style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 900 }}>
       <section
+        className="api-docs-intro"
         style={{
           ...panel,
           padding: "16px 18px",
@@ -177,6 +178,7 @@ export function ApiDocs({ d }: { d: Dashboard }) {
         return (
           <section key={key} style={{ ...panel, overflow: "hidden" }}>
             <div
+              className="api-endpoint-head"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -197,8 +199,8 @@ export function ApiDocs({ d }: { d: Dashboard }) {
               >
                 {e.method}
               </span>
-              <span style={{ font: `500 13px/1 ${mono}`, color: TX }}>{e.path}</span>
-              <span style={{ marginLeft: "auto", font: `400 10px/1 ${sans}`, color: TX3 }}>
+              <span className="api-endpoint-path" style={{ font: `500 13px/1 ${mono}`, color: TX }}>{e.path}</span>
+              <span className="api-endpoint-status" style={{ marginLeft: "auto", font: `400 10px/1 ${sans}`, color: TX3 }}>
                 {sample?.error
                   ? `live fetch failed: ${sample.error}`
                   : sample
