@@ -157,12 +157,14 @@ export function WorldMap({
         <Legend c={BAD} label="Inactive" n={statusCounts.inactive} />
       </div>
       <div className="world-map-canvas">
-      {/* Keep the SVG itself at the measured canvas size. The base ocean and
-          texture stay full-bleed while only the geographic layer scales, so
-          zooming out never exposes transparent gutters around the map. */}
+      {/* "meet" keeps the whole world visible at any canvas shape — a wide
+          canvas just gains open ocean at the sides (the 3× backdrop rects
+          and graticule extend past the viewBox, so the wings render as
+          seamless ocean rather than gutters). "slice" would crop the poles
+          and Arctic markers on wide screens. */}
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="xMidYMid slice"
+        preserveAspectRatio="xMidYMid meet"
         style={{ width: "100%", height: "100%", display: "block", ...(maxSvgHeight !== undefined ? { maxHeight: maxSvgHeight } : {}) }}
         role="img"
         aria-label="validator node locations world map"

@@ -305,7 +305,9 @@ a:hover {
 .world-map-legend { display:flex; align-items:center; gap:10px; padding:0 18px 12px; flex-wrap:wrap; }
 .world-map-legend-pill { display:inline-flex; align-items:center; gap:8px; padding:6px 13px; border:1px solid; border-radius:999px; font:500 11.5px/1 Inter,sans-serif; }
 .world-map-legend-dot { width:8px; height:8px; border-radius:4px; }
-.world-map-canvas { position:relative; height:clamp(220px, 26vw, 420px); margin:0 12px 12px; overflow:hidden; border:1px solid var(--line2); border-radius:14px; background:radial-gradient(ellipse at 50% 38%,rgba(44,93,132,.2),transparent 62%),linear-gradient(180deg,#10243a 0%,#0b1d31 58%,#081827 100%); }
+.world-map-canvas { position:relative; height:clamp(240px, 30vw, 580px); margin:0 12px 12px; overflow:hidden; border:1px solid var(--line2); border-radius:14px; background:radial-gradient(ellipse at 50% 38%,rgba(44,93,132,.2),transparent 62%),linear-gradient(180deg,#10243a 0%,#0b1d31 58%,#081827 100%); }
+/* Overview keeps a more compact map so the fold still shows the lower grid. */
+.overview-page .map-panel .world-map-canvas { height:clamp(220px, 24vw, 400px); }
 .world-map-canvas > svg { width:100% !important; height:100% !important; max-height:none !important; }
 .world-map-ocean-label { fill:#7f9fc4; opacity:.55; font:500 7.5px Inter,sans-serif; letter-spacing:.22em; pointer-events:none; }
 .world-map-controls { position:absolute; left:12px; bottom:12px; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--line2); border-radius:10px; background:rgba(7,16,28,.78); box-shadow:0 8px 20px rgba(0,0,0,.22); }
