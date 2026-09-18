@@ -145,8 +145,8 @@ export function Settings({
     : [];
 
   return (
-    <div className="settings-page g2" style={{ alignItems: "start", maxWidth: 1180 }}>
-      <section style={{ ...panel, overflow: "hidden" }}>
+    <div className="settings-page" style={{ maxWidth: 1180 }}>
+      <section className="settings-card settings-chain-card" style={{ ...panel, overflow: "hidden" }}>
         <PanelHead
           icon="M8.5 11.5L11.5 8.5M7 12l-2.2 2.2a2.6 2.6 0 01-3.7-3.7L5.4 6.2a2.6 2.6 0 013.7 0M13 8l2.2-2.2a2.6 2.6 0 00-3.7-3.7L7.2 6.4"
           title="Chain Configuration"
@@ -177,67 +177,37 @@ export function Settings({
         ))}
       </section>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <section style={{ ...panel, overflow: "hidden" }}>
+      <div className="settings-card-grid">
+        <section className="settings-card settings-rpc-card" style={{ ...panel, overflow: "hidden" }}>
           <PanelHead
             icon="M10 3.2v3.2M10 13.6v3.2M3.2 10h3.2M13.6 10h3.2M10 7.6a2.4 2.4 0 100 4.8 2.4 2.4 0 000-4.8z"
             title="RPC Endpoints"
-            subtitle="Failover order for the nodes feeding the indexer. The active node is where new blocks are read from."
-            aside={<span style={{ font: `400 10.5px/1 ${sans}`, color: TX3 }}>failover order</span>}
+            subtitle="Failover order for the nodes feeding the indexer."
+            aside={<Badge text="failover order" />}
           />
+          <div className="settings-endpoint-head" aria-hidden="true">
+            <span>#</span><span>Endpoint</span><span>Status</span><span>Priority</span><span>Latency</span><span>Actions</span>
+          </div>
           {(d.endpoints?.endpoints ?? []).length === 0 && <Loading text="Waiting for the endpoint list…" />}
           {(d.endpoints?.endpoints ?? []).map((e, i) => (
-            <div
-              key={e.id}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 12,
-                padding: "12px 16px",
-                borderBottom: "1px solid var(--line)",
-                background: e.is_active ? "var(--brandSoft)" : "transparent",
-              }}
-            >
-              <span style={{ width: 16, flex: "none", font: `500 10.5px/1.8 ${mono}`, color: TX3 }}>{i + 1}</span>
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  marginTop: 6,
-                  flex: "none",
-                  background: e.healthy ? OK : e.consecutive_failures > 0 ? BAD : WARN,
-                }}
-              />
-              <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                  <span style={{ font: `600 11.5px/1 ${sans}`, color: TX }}>{e.label}</span>
-                  {e.is_active && <Chip text="ACTIVE" color={OK} soft />}
-                  {e.pinned && !e.is_active && <Chip text="PINNED" color={BRAND} soft />}
-                </div>
-                <span
-                  style={{
-                    font: `400 10.5px/1 ${mono}`,
-                    color: TX2,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={e.rpc_url ?? ""}
-                >
-                  {e.rpc_url ?? "—"}
+            <div className={`settings-endpoint-row${e.is_active ? " active" : ""}`} key={e.id}>
+              <span className="settings-endpoint-rank">{i + 1}</span>
+              <div className="settings-endpoint-identity" title={e.rpc_url ?? ""}>
+                <span className="settings-endpoint-dot" style={{ background: e.healthy ? OK : e.consecutive_failures > 0 ? BAD : WARN }} />
+                <span className="settings-endpoint-copy">
+                  <strong>{e.label}</strong>
+                  <small style={{ color: e.last_error ? BAD : TX3 }}>
+                    {e.last_error
+                      ? `${e.consecutive_failures} failed check${e.consecutive_failures === 1 ? "" : "s"}`
+                      : `Height ${e.last_height != null ? fmt(e.last_height) : "—"}`}
+                  </small>
+                  {probes[e.id] !== undefined && <ProbeResult p={probes[e.id]} />}
                 </span>
-                <span style={{ font: `400 10px/1.4 ${mono}`, color: e.last_error ? BAD : TX3 }}>
-                  {e.last_error
-                    ? `${e.last_error} · ${e.consecutive_failures} consecutive failure${e.consecutive_failures === 1 ? "" : "s"}`
-                    : `height ${e.last_height != null ? fmt(e.last_height) : "—"} · ${e.latency_ms ?? "—"}ms`}
-                </span>
-                {probes[e.id] !== undefined && <ProbeResult p={probes[e.id]} />}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none", marginTop: 1 }}>
-                <span style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--line2)", background: "var(--panel2)", font: `500 9.5px/1 ${mono}`, color: TX2 }}>
-                  Priority {e.priority}
-                </span>
+              <span>{e.is_active ? <Chip text="ACTIVE" color={OK} soft /> : e.pinned ? <Chip text="PINNED" color={BRAND} soft /> : <span className="settings-muted">Standby</span>}</span>
+              <span className="settings-priority">{e.priority}</span>
+              <span className="settings-latency">{e.latency_ms ?? "—"}{e.latency_ms != null ? "ms" : ""}</span>
+              <div className="settings-endpoint-actions">
                 <ActionBtn
                   onClick={() => runProbe(e.id, e.rpc_url)}
                   disabled={probes[e.id] === "loading"}
@@ -253,23 +223,23 @@ export function Settings({
               </div>
             </div>
           ))}
-          <div style={{ padding: "10px 16px" }}>
-            <span style={{ font: `400 11px/1.5 ${sans}`, color: TX3 }}>
+          <div className="settings-endpoint-note">
+            <span className="settings-info-icon" aria-hidden="true">i</span>
+            <span>
               Endpoints are declared in <code>chains/*.yaml</code>; health and the active choice
               live in the database. Switching changes where new blocks are read from, not the
-              history already indexed. <strong>Probe</strong> asks the node directly from your
-              browser (polkadot.js-style, no monitor in the middle) — it needs the node's CORS
-              permission, and http nodes are blocked on the https site.
+              history already indexed. Probe asks the node directly from your browser and needs
+              the node's CORS permission.
             </span>
           </div>
         </section>
 
-        <section style={{ ...panel, overflow: "hidden" }}>
+        <section className="settings-card settings-capabilities-card" style={{ ...panel, overflow: "hidden" }}>
           <PanelHead
             icon="M10 2.8l6 2.2v4.4c0 3.5-2.4 6.2-6 7.8-3.6-1.6-6-4.3-6-7.8V5zM7 10l2 2 4-4"
             title="Capabilities"
             subtitle="Chain features detected from the network."
-            aside={<span style={{ font: `400 10.5px/1 ${sans}`, color: TX3 }}>read-only</span>}
+            aside={<Badge text="read-only" />}
           />
           <div style={{ padding: "12px 16px 14px", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
             {capRows.length === 0 && <Loading />}
@@ -321,12 +291,12 @@ export function Settings({
           )}
         </section>
 
-        <section style={{ ...panel, overflow: "hidden" }}>
+        <section className="settings-card settings-indexer-card" style={{ ...panel, overflow: "hidden" }}>
           <PanelHead
             icon="M4 5.5A1.5 1.5 0 015.5 4h9A1.5 1.5 0 0116 5.5v9a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 014 14.5zM4 8h12M8 8v8"
             title="Indexer Settings"
             subtitle="Configuration for the block indexer and data pipeline."
-            aside={<span style={{ font: `400 10.5px/1 ${mono}`, color: TX3 }}>read-only</span>}
+            aside={<Badge text="read-only" />}
           />
           {indexerRows.length === 0 && <Loading />}
           {indexerRows.map(([k, v, hint]) => (
@@ -368,7 +338,7 @@ export function Settings({
           ))}
         </section>
 
-        <section style={{ ...panel, overflow: "hidden" }}>
+        <section className="settings-card settings-security-card" style={{ ...panel, overflow: "hidden" }}>
           <PanelHead
             icon="M10 2.5l5.5 2v4c0 3.4-2.3 6-5.5 7.5C6.8 14.5 4.5 11.9 4.5 8.5v-4zM10 8v3M10 12.6v.2"
             title="Security / Access"
@@ -400,7 +370,7 @@ export function Settings({
                   cursor: "pointer",
                 }}
               >
-                <CopyButton value={publicConfig} copied={copied === publicConfig} onCopy={onCopy} />
+                <span aria-hidden="true">▣</span>
                 {copied === publicConfig ? "Copied" : "Copy JSON"}
               </button>
             </div>
@@ -421,32 +391,28 @@ export function Settings({
           </div>
         </section>
 
-        <section style={{ ...panel, overflow: "hidden" }}>
+        <section className="settings-card settings-appearance-card" style={{ ...panel, overflow: "hidden" }}>
           <PanelHead
             icon="M10 3.4a2.2 2.2 0 100 4.4 2.2 2.2 0 000-4.4zM4.5 16c.6-2.6 2.9-4 5.5-4s4.9 1.4 5.5 4"
             title="Appearance"
             subtitle="Customize how the monitor looks and feels."
           />
-          <div style={{ padding: "14px 16px", display: "flex", gap: 8 }}>
+          <div className="settings-theme-picker">
+            <span className="settings-theme-label">Theme</span>
+            <div className="settings-theme-options">
             {(["dark", "light"] as Theme[]).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => onTheme(t)}
-                style={{
-                  padding: "8px 16px",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  font: `600 11.5px/1 ${sans}`,
-                  border: `1px solid ${theme === t ? "var(--brand)" : "var(--line)"}`,
-                  background: theme === t ? "var(--brandSoft)" : "transparent",
-                  color: theme === t ? BRAND : TX2,
-                  textTransform: "capitalize",
-                }}
+                aria-pressed={theme === t}
+                className={theme === t ? "active" : ""}
               >
                 {t}
               </button>
             ))}
+            </div>
+            <small>Choose your preferred theme for the interface.</small>
           </div>
         </section>
       </div>
