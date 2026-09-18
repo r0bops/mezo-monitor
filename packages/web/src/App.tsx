@@ -35,10 +35,10 @@ const NAV: { id: PageId; label: string; d: string }[] = [
   { id: "validators", label: "Validators", d: "M4 6h12M4 10h12M4 14h12" },
   { id: "blocks", label: "Blocks", d: "m10 3 6 3.5v7L10 17l-6-3.5v-7zM4 6.5l6 3.5 6-3.5M10 10v7" },
   { id: "transactions", label: "Transactions", d: "M4 7h12m0 0-3-3m3 3-3 3M16 13H4m0 0 3-3m-3 3 3 3" },
-  { id: "metrics", label: "Metrics", d: "M4 15l4-5 3 3 5-7" },
-  { id: "endpoints", label: "RPC Endpoints", d: "M4 10l6-6M4 10l6 6M4 10h12" },
-  { id: "rpc", label: "Direct RPC", d: "M7 4C4.8 9 4.8 11 7 16M13 4c2.2 5 2.2 7 0 12M4 10h12" },
-  { id: "api", label: "API & Docs", d: "M7 6l-3 4 3 4M13 6l3 4-3 4" },
+  { id: "metrics", label: "Analytics", d: "M4 15l4-5 3 3 5-7" },
+  { id: "endpoints", label: "RPC Directory", d: "M4 10l6-6M4 10l6 6M4 10h12" },
+  { id: "rpc", label: "RPC Console", d: "M7 4C4.8 9 4.8 11 7 16M13 4c2.2 5 2.2 7 0 12M4 10h12" },
+  { id: "api", label: "API Reference", d: "M7 6l-3 4 3 4M13 6l3 4-3 4" },
   {
     id: "settings",
     label: "Settings",
@@ -51,10 +51,10 @@ const TITLES: Record<PageId, string> = {
   validators: "Validators",
   blocks: "Blocks",
   transactions: "Transactions",
-  metrics: "Metrics",
-  endpoints: "RPC Endpoints",
-  rpc: "Direct RPC",
-  api: "API & Docs",
+  metrics: "Analytics",
+  endpoints: "RPC Directory",
+  rpc: "RPC Console",
+  api: "API Reference",
   settings: "Settings",
 };
 
@@ -67,7 +67,7 @@ const SUBTITLES: Record<PageId, string> = {
   endpoints: "Usable Mezo RPC endpoints — verified and community-discovered.",
   rpc: "Inspect the connected Mezo RPC endpoint directly.",
   api: "Build with indexed Mezo network data.",
-  settings: "Personalize the monitor and its data display.",
+  settings: "Configure the monitor and its data display.",
 };
 
 const VALID_PAGES = new Set<string>(NAV.map((n) => n.id));
@@ -315,7 +315,7 @@ export default function App() {
 
           <div className={page === "validators" ? "page-heading validators-global-heading" : "page-heading"}>
             <div>
-              {page === "rpc" && <div className="direct-rpc-breadcrumb"><span>Home</span><b>›</b><strong>Direct RPC</strong></div>}
+              {page === "rpc" && <div className="direct-rpc-breadcrumb"><span>Home</span><b>›</b><strong>RPC Console</strong></div>}
               <h1>{TITLES[page]}</h1>
               <span className="page-subtitle">{SUBTITLES[page]}</span>
             </div>

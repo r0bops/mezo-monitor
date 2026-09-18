@@ -116,7 +116,7 @@ export function RpcDirectory({ d }: { d: Dashboard }) {
           Discovered endpoints are what the nodes themselves reported at the last probe —
           evidence, not endorsement. Vet one yourself in the{" "}
           <a href="#/rpc" style={{ color: "var(--brand)" }}>
-            Direct RPC console
+            RPC Console
           </a>{" "}
           before pointing anything important at it.
         </div>
