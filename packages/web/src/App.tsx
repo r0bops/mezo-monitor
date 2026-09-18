@@ -17,7 +17,7 @@ import { OK, TX, TX2, TX3, sans } from "./components/ui";
 import { EndpointSwitcher } from "./components/EndpointSwitcher";
 import { copyText } from "./lib";
 
-export type Theme = "dark" | "light";
+export type Theme = "dark" | "light" | "system";
 
 type PageId =
   | "overview"
@@ -80,8 +80,12 @@ function pageFromLocation(): PageId {
 }
 
 export default function App() {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem("mezo-theme") as Theme) ?? "dark",
+  const [theme, setTheme] = useState<Theme>(() => {
+    const stored = localStorage.getItem("mezo-theme");
+    return stored === "dark" || stored === "light" || stored === "system" ? stored : "dark";
+  });
+  const [systemTheme, setSystemTheme] = useState<"dark" | "light">(() =>
+    window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark",
   );
   const [page, setPage] = useState<PageId>(pageFromLocation);
   const [live, setLive] = useState(true);
@@ -117,6 +121,16 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("mezo-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: light)");
+    const sync = () => setSystemTheme(media.matches ? "light" : "dark");
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  const appliedTheme = theme === "system" ? systemTheme : theme;
 
   useEffect(() => {
     const onHash = () => setPage(pageFromLocation());
@@ -174,7 +188,7 @@ export default function App() {
 
   return (
     <div
-      data-theme={theme}
+      data-theme={appliedTheme}
       style={{
         background: "var(--canvas)",
         color: TX,
@@ -260,7 +274,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                onClick={() => setTheme(appliedTheme === "dark" ? "light" : "dark")}
                 aria-label="Toggle theme"
                 style={{
                   display: "inline-flex",
@@ -278,7 +292,7 @@ export default function App() {
                 <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                   <path
                     d={
-                      theme === "dark"
+                      appliedTheme === "dark"
                         ? "M14.5 11.5A5.5 5.5 0 018.5 5.5a5.5 5.5 0 00.8 10.9 5.5 5.5 0 005.2-4.9z"
                         : "M10 3.5v1.6M10 14.9v1.6M3.5 10h1.6M14.9 10h1.6M5.6 5.6l1.1 1.1M13.3 13.3l1.1 1.1M14.4 5.6l-1.1 1.1M6.7 13.3l-1.1 1.1M13 10a3 3 0 11-6 0 3 3 0 016 0z"
                     }

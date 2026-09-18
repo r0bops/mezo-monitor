@@ -400,7 +400,7 @@ export function Settings({
           <div className="settings-theme-picker">
             <span className="settings-theme-label">Theme</span>
             <div className="settings-theme-options">
-            {(["dark", "light"] as Theme[]).map((t) => (
+            {(["dark", "light", "system"] as Theme[]).map((t) => (
               <button
                 key={t}
                 type="button"
