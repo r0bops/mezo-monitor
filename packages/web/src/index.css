@@ -315,6 +315,12 @@ a:hover {
 .world-map-controls button:last-child { border-bottom:0; font-size:15px; }
 .world-map-controls button:hover { background:var(--panel2); color:var(--tx); }
 .world-map-distribution { position:absolute; right:12px; bottom:12px; display:inline-flex; align-items:center; gap:8px; padding:9px 13px; border:1px solid var(--line2); border-radius:10px; background:rgba(7,16,28,.78); color:var(--tx2); font:500 10.5px/1 Inter,sans-serif; }
+/* Names offline set members that have no observed location — the map never
+   guesses coordinates, so without this note the legend's Inactive count
+   would point at a dot that isn't there. */
+.world-map-offline-note { position:absolute; top:12px; left:12px; display:inline-flex; align-items:center; gap:7px; max-width:calc(100% - 24px); padding:8px 12px; border:1px solid rgba(255,59,48,.42); border-radius:10px; background:rgba(7,16,28,.78); color:var(--tx2); font:500 10.5px/1 Inter,sans-serif; box-shadow:0 8px 20px rgba(0,0,0,.22); }
+.world-map-offline-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.world-map-offline-dot { width:7px; height:7px; flex:none; border-radius:50%; background:#ff3b30; box-shadow:0 0 8px rgba(255,59,48,.7); }
 .world-map-distribution span { color:var(--tx3); font-size:14px; }
 .world-map-marker-glow { opacity:.3; filter:blur(5px); transform-box:fill-box; transform-origin:center; animation:worldMapMarkerGlow 2.8s ease-in-out infinite; }
 .world-map-marker-ring { opacity:.75; }
@@ -1102,6 +1108,7 @@ a {
   .world-map-legend { padding-left: 12px; padding-right: 12px; gap: 7px; }
   .world-map-legend-pill { padding: 5px 8px; font-size: 10px; }
   .world-map-distribution { right: 8px; bottom: 8px; max-width: calc(100% - 62px); padding: 7px 9px; font-size: 9px; }
+  .world-map-offline-note { top: 8px; left: 8px; max-width: calc(100% - 16px); padding: 6px 9px; font-size: 9px; }
   .world-map-controls { left: 8px; bottom: 8px; }
   .world-map-controls button { width: 34px; height: 32px; }
 

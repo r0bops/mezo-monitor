@@ -14,7 +14,7 @@
 import { useEffect, useState } from "react";
 import type { Validator } from "../api";
 import { agoFrom } from "../lib";
-import { BAD, OK, StatusPill, TX, TX2, TX3, ValidatorAvatar, WARN, mono, sans } from "./ui";
+import { OK, StatusPill, TX, TX2, TX3, ValidatorAvatar, WARN, mono, sans } from "./ui";
 
 const W = 720;
 const H = 360;
@@ -59,8 +59,13 @@ function featureToPaths(f: GeoFeature): string[] {
   return [];
 }
 
+/** True red for offline set members. Deliberately NOT var(--bad): the brand
+ *  pink used for selection and --bad are near-identical hues, which would
+ *  make "offline" and "selected" indistinguishable on the map. */
+const OFFLINE_RED = "#ff3b30";
+
 export function statusColorOf(status: Validator["status"]): string {
-  return status === "active" ? OK : status === "degraded" ? WARN : BAD;
+  return status === "active" ? OK : status === "degraded" ? WARN : OFFLINE_RED;
 }
 
 export function WorldMap({
@@ -132,6 +137,13 @@ export function WorldMap({
     degraded: validators.filter((v) => v.status === "degraded").length,
     inactive: validators.filter((v) => v.status === "inactive").length,
   };
+  // Offline members with no observed location can't be drawn (a guessed
+  // position would be fabrication) — name them on the map instead so the
+  // legend's Inactive count never points at a dot that isn't there.
+  const placedSet = new Set(placed.map((v) => v.address));
+  const offlineUnplaced = validators.filter(
+    (v) => v.status === "inactive" && !placedSet.has(v.address),
+  );
 
   return (
     <div style={{ position: "relative" }}>
@@ -154,7 +166,7 @@ export function WorldMap({
       <div className="world-map-legend">
         <Legend c={OK} label="Active" n={statusCounts.active} />
         <Legend c={WARN} label="Degraded" n={statusCounts.degraded} />
-        <Legend c={BAD} label="Inactive" n={statusCounts.inactive} />
+        <Legend c={OFFLINE_RED} label="Inactive" n={statusCounts.inactive} />
       </div>
       <div className="world-map-canvas">
       {/* "meet" keeps the whole world visible at any canvas shape — a wide
@@ -270,6 +282,20 @@ export function WorldMap({
         <button type="button" aria-label="Reset map view" onClick={() => setZoom(1)}>◉</button>
       </div>
       <span className="world-map-distribution"><span aria-hidden="true">▥</span> Global validator distribution</span>
+      {offlineUnplaced.length > 0 && (
+        <span
+          className="world-map-offline-note"
+          title={`Offline validators the map can't place — their location has never been observed: ${offlineUnplaced
+            .map((v) => v.moniker ?? v.address)
+            .join(", ")}`}
+        >
+          <span className="world-map-offline-dot" aria-hidden="true" />
+          <span className="world-map-offline-text">
+            {offlineUnplaced.map((v) => v.moniker ?? shortAddr(v.address)).join(", ")}
+            {" — offline, location never observed"}
+          </span>
+        </span>
+      )}
       </div>
 
       {hover && (
